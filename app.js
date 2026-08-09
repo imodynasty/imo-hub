@@ -1,4 +1,4 @@
-/* IMO DYNASTY V3.3.75 — Priority Manager Profiles + Per-Tab Cache */
+/* IMO DYNASTY V3.3.76 — Immediate Manager Profile Sections */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -2222,9 +2222,9 @@ function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
   return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
 }
-function managerProfileSessionKey(key){return `imo-profile-v3375-session|${key}`}
-function managerProfilePersistentKey(key){return `imo-profile-v3375-persistent|${key}`}
-function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v3375|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
+function managerProfileSessionKey(key){return `imo-profile-v3376-session|${key}`}
+function managerProfilePersistentKey(key){return `imo-profile-v3376-persistent|${key}`}
+function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v3376|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
 function readManagerProfileTabCache(managerId,tab){
   try{
     const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;
@@ -2306,7 +2306,7 @@ function managerProfileFastHTML(managerId){
   const avatar=manager.avatar?`<img src="${esc(manager.avatar)}" alt="${esc(manager.name)} team avatar" loading="eager">`:esc(manager.initials||manager.name.slice(0,2).toUpperCase());
   const rosterIds=safeArray(manager?.roster?.players).map(String).slice(0,8);
   const rosterRows=rosterIds.map((pid,i)=>{const player=state.players?.[pid]||{},name=playerName(pid),pic=`https://sleepercdn.com/content/nba/players/${pid}.jpg`,avg=Number(playerCurrentAverage(pid)?.avg||0);return `<div class="profile-roster-row"><span class="profile-roster-rank">${i+1}</span><span class="player-avatar-wrap"><img src="${esc(pic)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="player-avatar-fallback">${esc(name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''))}</span></span><div>${playerLink(pid,name,'profile-player-name')}<small>${esc(player.position||'NBA')}</small></div><b class="profile-player-average">${avg>0?avg.toFixed(2):'—'}</b></div>`}).join('');
-  return `<header class="manager-profile-hero"><div class="manager-profile-avatar">${avatar}</div><div class="manager-profile-hero-copy"><span class="eyebrow">TEAM PROFILE</span><h2>${esc(manager.name)}</h2><p>Core profile ready. Deeper sections load only when opened.</p></div></header><nav class="manager-profile-tabs manager-profile-tabs-fast" aria-label="Manager profile sections"><button type="button" class="manager-profile-tab active" data-manager-tab="overview">Overview</button><button type="button" class="manager-profile-tab" data-manager-tab="roster">Roster</button><button type="button" class="manager-profile-tab" data-manager-tab="front-office">Front Office</button><button type="button" class="manager-profile-tab" data-manager-tab="history">History</button></nav><div class="manager-profile-tab-panels"><section class="manager-profile-tab-panel active" data-manager-tab-panel="overview"><div class="manager-profile-grid manager-profile-fast-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster preview</h3></div><span class="period-pill">${safeArray(manager?.roster?.players).length} players</span></div><div class="profile-roster-list">${rosterRows||'<div class="profile-empty">No roster data available.</div>'}</div></section><section class="manager-profile-card manager-profile-fast-status"><div class="manager-profile-card-heading"><div><span class="eyebrow">ON-DEMAND DATA</span><h3>Choose a section</h3></div></div><small>Roster metrics, Front Office analytics and History are loaded only when you open those tabs.</small></section></div></section></div>`;
+  return `<header class="manager-profile-hero"><div class="manager-profile-avatar">${avatar}</div><div class="manager-profile-hero-copy"><span class="eyebrow">TEAM PROFILE</span><h2>${esc(manager.name)}</h2><p>Manager sections are loading in the background.</p></div></header><nav class="manager-profile-tabs manager-profile-tabs-fast" aria-label="Manager profile sections"><button type="button" class="manager-profile-tab active" data-manager-tab="overview">Overview</button><button type="button" class="manager-profile-tab" data-manager-tab="roster">Roster</button><button type="button" class="manager-profile-tab" data-manager-tab="front-office">Front Office</button><button type="button" class="manager-profile-tab" data-manager-tab="history">History</button></nav><div class="manager-profile-tab-panels"><section class="manager-profile-tab-panel active" data-manager-tab-panel="overview"><div class="manager-profile-grid manager-profile-fast-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster preview</h3></div><span class="period-pill">${safeArray(manager?.roster?.players).length} players</span></div><div class="profile-roster-list">${rosterRows||'<div class="profile-empty">No roster data available.</div>'}</div></section></div></section></div>`;
 }
 function hydrateManagerProfileSection(managerId,tab){
   const id=String(managerId||''),section=String(tab||'overview'),season=String(state.profileAverageSeason||'2026'),key=managerProfileCacheKey(id),rosterIds=safeArray(state.managers.get(id)?.roster?.players).map(String);
@@ -2318,6 +2318,28 @@ function hydrateManagerProfileSection(managerId,tab){
   if(state.profileBuilds.has(hydrationKey))return;
   const hydration=Promise.allSettled(jobs).then(()=>{state.computedCache.managerGrades=null;clearManagerProfileCachedHTML(id);const modal=$('managerProfileModal'),content=$('managerProfileContent');if(modal?.dataset.managerId===id&&modal.classList.contains('open')&&modal.dataset.activeTab===section){const active=section;content.innerHTML=cachedManagerProfileHTML(id);bindSparklineTooltips(content);setManagerProfileTab(active,false)}}).finally(()=>state.profileBuilds.delete(hydrationKey));
   state.profileBuilds.set(hydrationKey,hydration);
+}
+
+function loadAllManagerProfileSections(managerId){
+  const id=String(managerId||''),modal=$('managerProfileModal'),content=$('managerProfileContent');
+  if(!id||!modal||!content)return Promise.resolve(false);
+  const buildKey=`full-profile-immediate|${id}|${String(state.profileAverageSeason||'')}`;
+  let build=state.profileBuilds.get(buildKey);
+  if(!build){
+    const priority=state.profilePriorityPromise||Promise.resolve();
+    build=Promise.allSettled([priority]).then(()=>new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{try{resolve(managerProfileHTML(id))}catch(error){reject(error)}},0))));
+    state.profileBuilds.set(buildKey,build);build.finally(()=>state.profileBuilds.delete(buildKey));
+  }
+  return build.then(html=>{
+    writeManagerProfileCachedHTML(managerProfileCacheKey(id),id,html);cacheManagerProfileTabsFromHTML(id,html);
+    if(modal.dataset.managerId!==id||!modal.classList.contains('open'))return false;
+    const active=modal.dataset.activeTab||managerProfileTabFromHash()||'overview';
+    content.innerHTML=html;bindSparklineTooltips(content);setManagerProfileTab(active,false);
+    // Roster and Front Office enrichments start immediately too, but do not block the first full profile render.
+    hydrateManagerProfileSection(id,'roster');
+    hydrateManagerProfileSection(id,'front-office');
+    return true
+  }).catch(error=>{console.error('Immediate manager profile build failed:',error);return false})
 }
 
 function ensureManagerFullProfileForTab(managerId,tab){
@@ -2377,10 +2399,13 @@ async function openManagerProfile(managerId,pushState=true){
   if(!state.historyReady){
     if(earlyStoredProfile){
       content.innerHTML=earlyStoredProfile;bindSparklineTooltips(content);initialiseManagerProfileTab();
-      modal.dataset.pendingFullProfile='1';modal.dataset.cachedProfileShown='1';
+      modal.dataset.cachedProfileShown='1';
     }else{
-      content.innerHTML=managerProfileFastHTML(id);modal.dataset.pendingFullProfile='1';delete modal.dataset.cachedProfileShown;
+      content.innerHTML=managerProfileFastHTML(id);modal.dataset.activeTab='overview';delete modal.dataset.cachedProfileShown;
     }
+    // V3.3.76: every manager section begins building immediately. Current + previous
+    // season data remains the priority; older archive data can still finish later.
+    loadAllManagerProfileSections(id);
     if(pushState)history.pushState({managerProfile:id,tab:'overview'},'',`#manager=${encodeURIComponent(id)}&tab=overview`);
     requestAnimationFrame(()=>$('managerProfileClose')?.focus());return
   }
@@ -2391,12 +2416,12 @@ async function openManagerProfile(managerId,pushState=true){
     bindSparklineTooltips(content);
     initialiseManagerProfileTab();
   }else{
-    // V3.3.73: opening a manager no longer builds every analytics tab. The cheap
-    // core shell is the complete initial response; deeper tabs build on demand.
     content.innerHTML=managerProfileFastHTML(id);
     modal.dataset.activeTab='overview';
+    loadAllManagerProfileSections(id);
   }
-  // Heavy roster efficiency and acquisition history are hydrated only when their tabs are opened.
+  // If a verified full profile was cached, refresh all tabs quietly as well.
+  if(storedProfile)loadAllManagerProfileSections(id);
   if(pushState)history.pushState({managerProfile:id,tab:"overview"},"",`#manager=${encodeURIComponent(id)}&tab=overview`);
   requestAnimationFrame(()=>$('managerProfileClose')?.focus());
 }
