@@ -1,4 +1,4 @@
-/* IMO DYNASTY V3.3.68 — Trade Ledger Released-Player Cleanup */
+/* IMO DYNASTY V3.3.75 — Priority Manager Profiles + Per-Tab Cache */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -19,7 +19,7 @@ const CANONICAL_DRAFT_COLUMNS={
 function normaliseTeamKey(name){return String(name||"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 function canonicalDraftSlot(season,teamName){return CANONICAL_DRAFT_COLUMNS[String(season)]?.[normaliseTeamKey(teamName)]??null}
 
-const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
+const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
 const $=id=>document.getElementById(id),WL={"14":"14 days","28":"28 days","season":"2026 season","all":"All time"};
 try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key&&key.startsWith('imo-profile-'))sessionStorage.removeItem(key)}}catch(_){ }
 function resetComputedCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerTrades.clear();state.computedCache.tradeSide.clear();state.computedCache.completedMatchups.clear();state.computedCache.tendencyLeague=null;state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
@@ -62,7 +62,7 @@ function applyHubSnapshot(snapshot){
   if(!snapshot||!Array.isArray(snapshot.bundles)||!snapshot.bundles.length)return false;
   state.players=snapshot.players||{};state.bundles=snapshot.bundles;state.sportState=snapshot.sportState||null;
   state.seasonTotalAverages=snapshot.seasonTotalAverages||{};state.seasonTotalMeta=snapshot.seasonTotalMeta||{};
-  state.historyReady=true;
+  state.historyReady=true;state.profilePriorityReady=true;state.profilePriorityPromise=Promise.resolve(true);
   if(!rebuildStateFromBundles())return false;
   state.snapshotApplied=true;document.documentElement.classList.add('imo-interactive');instantManagerShell();requestAnimationFrame(()=>renderAll());return true
 }
@@ -2222,8 +2222,32 @@ function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
   return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
 }
-function managerProfileSessionKey(key){return `imo-profile-v3374-session|${key}`}
-function managerProfilePersistentKey(key){return `imo-profile-v3374-persistent|${key}`}
+function managerProfileSessionKey(key){return `imo-profile-v3375-session|${key}`}
+function managerProfilePersistentKey(key){return `imo-profile-v3375-persistent|${key}`}
+function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v3375|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
+function readManagerProfileTabCache(managerId,tab){
+  try{
+    const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;
+    const entry=JSON.parse(raw),expected=managerProfileCoreFingerprint(managerId);
+    if(!entry?.html||entry.fingerprint!==expected)return null;
+    return entry.html
+  }catch(_){return null}
+}
+function writeManagerProfileTabCache(managerId,tab,html){
+  if(!html)return;
+  try{localStorage.setItem(managerProfileTabPersistentKey(managerId,tab),JSON.stringify({html,savedAt:Date.now(),fingerprint:managerProfileCoreFingerprint(managerId)}))}catch(_){ }
+}
+function cacheManagerProfileTabsFromHTML(managerId,html){
+  if(!html||!('DOMParser' in window))return;
+  try{const doc=new DOMParser().parseFromString(`<div id=\"root\">${html}</div>`,'text/html');doc.querySelectorAll('[data-manager-tab-panel]').forEach(panel=>writeManagerProfileTabCache(managerId,panel.dataset.managerTabPanel,panel.outerHTML))}catch(_){ }
+}
+function mountCachedManagerProfileTab(managerId,tab){
+  const modal=$('managerProfileModal'),content=$('managerProfileContent'),cached=readManagerProfileTabCache(managerId,tab);if(!modal||!content||!cached)return false;
+  let panels=content.querySelector('.manager-profile-tab-panels');
+  if(!panels){panels=document.createElement('div');panels.className='manager-profile-tab-panels';const loose=content.querySelector('[data-manager-tab-panel=\"overview\"]');if(loose)panels.appendChild(loose);content.appendChild(panels)}
+  if(!panels.querySelector(`[data-manager-tab-panel=\"${tab}\"]`))panels.insertAdjacentHTML('beforeend',cached);
+  bindSparklineTooltips(content);setManagerProfileTab(tab,true);return true
+}
 function parseManagerProfileCache(raw){
   if(!raw)return null;
   try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed.html==='string')return parsed}catch(_){ }
@@ -2264,7 +2288,7 @@ function cachedManagerProfileHTML(managerId){
   const key=managerProfileCacheKey(managerId),cached=readManagerProfileCachedHTML(key,managerId);
   if(cached)return cached;
   const html=managerProfileHTML(managerId);
-  writeManagerProfileCachedHTML(key,managerId,html);
+  writeManagerProfileCachedHTML(key,managerId,html);cacheManagerProfileTabsFromHTML(managerId,html);
   return html;
 }
 const managerProfilePrewarmQueue=[];
@@ -2282,7 +2306,7 @@ function managerProfileFastHTML(managerId){
   const avatar=manager.avatar?`<img src="${esc(manager.avatar)}" alt="${esc(manager.name)} team avatar" loading="eager">`:esc(manager.initials||manager.name.slice(0,2).toUpperCase());
   const rosterIds=safeArray(manager?.roster?.players).map(String).slice(0,8);
   const rosterRows=rosterIds.map((pid,i)=>{const player=state.players?.[pid]||{},name=playerName(pid),pic=`https://sleepercdn.com/content/nba/players/${pid}.jpg`,avg=Number(playerCurrentAverage(pid)?.avg||0);return `<div class="profile-roster-row"><span class="profile-roster-rank">${i+1}</span><span class="player-avatar-wrap"><img src="${esc(pic)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="player-avatar-fallback">${esc(name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''))}</span></span><div>${playerLink(pid,name,'profile-player-name')}<small>${esc(player.position||'NBA')}</small></div><b class="profile-player-average">${avg>0?avg.toFixed(2):'—'}</b></div>`}).join('');
-  return `<header class="manager-profile-hero"><div class="manager-profile-avatar">${avatar}</div><div class="manager-profile-hero-copy"><span class="eyebrow">TEAM PROFILE</span><h2>${esc(manager.name)}</h2><p>Core profile ready. Deeper sections load only when opened.</p></div></header><nav class="manager-profile-tabs manager-profile-tabs-fast" aria-label="Manager profile sections"><button type="button" class="manager-profile-tab active" data-manager-tab="overview">Overview</button><button type="button" class="manager-profile-tab" data-manager-tab="roster">Roster</button><button type="button" class="manager-profile-tab" data-manager-tab="front-office">Front Office</button><button type="button" class="manager-profile-tab" data-manager-tab="history">History</button></nav><div class="manager-profile-grid manager-profile-fast-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster preview</h3></div><span class="period-pill">${safeArray(manager?.roster?.players).length} players</span></div><div class="profile-roster-list">${rosterRows||'<div class="profile-empty">No roster data available.</div>'}</div></section><section class="manager-profile-card manager-profile-fast-status"><div class="manager-profile-card-heading"><div><span class="eyebrow">ON-DEMAND DATA</span><h3>Choose a section</h3></div></div><small>Roster metrics, Front Office analytics and History are loaded only when you open those tabs.</small></section></div>`;
+  return `<header class="manager-profile-hero"><div class="manager-profile-avatar">${avatar}</div><div class="manager-profile-hero-copy"><span class="eyebrow">TEAM PROFILE</span><h2>${esc(manager.name)}</h2><p>Core profile ready. Deeper sections load only when opened.</p></div></header><nav class="manager-profile-tabs manager-profile-tabs-fast" aria-label="Manager profile sections"><button type="button" class="manager-profile-tab active" data-manager-tab="overview">Overview</button><button type="button" class="manager-profile-tab" data-manager-tab="roster">Roster</button><button type="button" class="manager-profile-tab" data-manager-tab="front-office">Front Office</button><button type="button" class="manager-profile-tab" data-manager-tab="history">History</button></nav><div class="manager-profile-tab-panels"><section class="manager-profile-tab-panel active" data-manager-tab-panel="overview"><div class="manager-profile-grid manager-profile-fast-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster preview</h3></div><span class="period-pill">${safeArray(manager?.roster?.players).length} players</span></div><div class="profile-roster-list">${rosterRows||'<div class="profile-empty">No roster data available.</div>'}</div></section><section class="manager-profile-card manager-profile-fast-status"><div class="manager-profile-card-heading"><div><span class="eyebrow">ON-DEMAND DATA</span><h3>Choose a section</h3></div></div><small>Roster metrics, Front Office analytics and History are loaded only when you open those tabs.</small></section></div></section></div>`;
 }
 function hydrateManagerProfileSection(managerId,tab){
   const id=String(managerId||''),section=String(tab||'overview'),season=String(state.profileAverageSeason||'2026'),key=managerProfileCacheKey(id),rosterIds=safeArray(state.managers.get(id)?.roster?.players).map(String);
@@ -2301,16 +2325,23 @@ function ensureManagerFullProfileForTab(managerId,tab){
   if(!id||!modal||!content)return Promise.resolve(false);
   if(section==='overview')return Promise.resolve(true);
   if(content.querySelector(`[data-manager-tab-panel="${section}"]`)){setManagerProfileTab(section,true);return Promise.resolve(true)}
-  const buildKey=`ondemand-profile|${id}`;
+  if(mountCachedManagerProfileTab(id,section))return Promise.resolve(true);
+  const buildKey=`ondemand-profile|${id}|${section}`;
   let build=state.profileBuilds.get(buildKey);
   if(!build){
-    const notice=document.createElement('div');notice.className='manager-profile-on-demand-loading';notice.innerHTML=`<strong>Loading ${section==='front-office'?'Front Office':section.charAt(0).toUpperCase()+section.slice(1)}…</strong><small>Only this deeper profile view is being prepared.</small>`;content.appendChild(notice);
-    build=new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{try{resolve(managerProfileHTML(id))}catch(error){reject(error)}},0)));
+    const notice=document.createElement('div');notice.className='manager-profile-on-demand-loading';notice.innerHTML=`<strong>Loading ${section==='front-office'?'Front Office':section.charAt(0).toUpperCase()+section.slice(1)}…</strong><small>${section==='history'?'Loading the latest seasons first; older history follows only if needed.':'Using current + previous-season manager data first.'}</small>`;content.appendChild(notice);
+    const priority=state.profilePriorityPromise||Promise.resolve();
+    const historyNeed=section==='history'?ensureOlderHistoryLoaded():Promise.resolve();
+    build=Promise.allSettled([priority,historyNeed]).then(()=>new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{try{resolve(managerProfileHTML(id))}catch(error){reject(error)}},0))));
     state.profileBuilds.set(buildKey,build);build.finally(()=>state.profileBuilds.delete(buildKey));
   }
   return build.then(html=>{
     if(modal.dataset.managerId!==id)return false;
-    content.innerHTML=html;writeManagerProfileCachedHTML(managerProfileCacheKey(id),id,html);bindSparklineTooltips(content);setManagerProfileTab(section,true);return true
+    writeManagerProfileCachedHTML(managerProfileCacheKey(id),id,html);cacheManagerProfileTabsFromHTML(id,html);
+    const parser=new DOMParser().parseFromString(`<div>${html}</div>`,'text/html'),panel=parser.querySelector(`[data-manager-tab-panel="${section}"]`);
+    content.querySelector('.manager-profile-on-demand-loading')?.remove();
+    if(panel){let panels=content.querySelector('.manager-profile-tab-panels');if(!panels){panels=document.createElement('div');panels.className='manager-profile-tab-panels';content.appendChild(panels)}panels.insertAdjacentHTML('beforeend',panel.outerHTML);bindSparklineTooltips(content);setManagerProfileTab(section,true);return true}
+    content.innerHTML=html;bindSparklineTooltips(content);setManagerProfileTab(section,true);return true
   }).catch(error=>{console.error('On-demand manager tab failed:',error);content.querySelector('.manager-profile-on-demand-loading')?.remove();return false})
 }
 
@@ -3231,6 +3262,16 @@ function closeGlobalSearch(){const modal=$("globalSearchModal");if(!modal)return
 function openGlobalTradeResult(key){const trade=state.trades.find(t=>globalTradeKey(t)===String(key)),target=$("globalSearchResults");if(!trade||!target)return;target.innerHTML=`<div class="global-search-trade-view"><button type="button" class="global-search-back" data-global-search-back>← Back to results</button><span class="global-search-type type-trade">Trade</span><h3>${esc(globalTradeLabel(trade))}</h3><p>${esc(fmt(trade.created))} · ${esc(trade.season_label||'League trade')}</p><div class="trade-detail-body">${tradeDetailsHTML(trade)}</div></div>`}
 function launchGlobalSearchEntity(action,id){if(action==='trade'){openGlobalTradeResult(id);return}closeGlobalSearch();if(action==='player')openPlayerHistory(id);else if(action==='manager')openManagerProfile(id);else if(action==='pick')openPickHistory(id)}
 
+function priorityHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(0,1)}
+function olderHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(1)}
+function ensureOlderHistoryLoaded(){
+  if(state.historyReady)return Promise.resolve(true);
+  if(state.olderHistoryPromise)return state.olderHistoryPromise;
+  const olderIds=olderHistoricalLeagueIds();if(!olderIds.length){state.historyReady=true;return Promise.resolve(true)}
+  state.olderHistoryPromise=(async()=>{const additions=[];for(const leagueId of olderIds){const existing=state.bundles.find(b=>String(b?.league?.league_id)===String(leagueId));if(existing&&state.snapshotApplied){additions.push(existing);continue}const bundle=await loadSeason(leagueId);if(bundle)additions.push(bundle);await yieldToBrowser()}const byId=new Map(state.bundles.map(b=>[String(b?.league?.league_id),b]));additions.forEach(b=>byId.set(String(b?.league?.league_id),b));state.bundles=[...byId.values()].sort((a,b)=>Number(b?.league?.season||0)-Number(a?.league?.season||0));state.historyReady=true;rebuildStateFromBundles();renderForChange('history');scheduleHubCacheWrite();return true})().finally(()=>{state.olderHistoryPromise=null});
+  return state.olderHistoryPromise
+}
+function scheduleOlderHistoryLoad(){if(state.historyReady)return;const run=()=>ensureOlderHistoryLoaded().catch(error=>console.warn('Deferred older history unavailable:',error));if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:18000});else setTimeout(run,10000)}
 async function load(){
   const status=$('statusText');if(status)status.textContent='Connecting…';safeRender('ticker bootstrap',renderTicker);safeRender('verified market bootstrap',renderVerifiedMarketFallback);
   const snapshotPromise=hubCacheRead().catch(()=>null);
@@ -3270,15 +3311,16 @@ async function load(){
     if(status)status.textContent='Live · loading history in the background…';
     await yieldToBrowser();
 
-    for(const leagueId of CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId))){
-      const bundle=await loadSeason(leagueId);
-      if(bundle)freshBundles.push(bundle);
-      await yieldToBrowser();
-    }
-    state.bundles=freshBundles.length?freshBundles:[current||core];
-    state.historyReady=true;rebuildStateFromBundles();renderForChange('history');setupHeadToHeadRefresh();upgradeOpenManagerProfile();
-    if(status)status.textContent=`Live · ${state.bundles.length} seasons loaded · verifying markets`;
-    scheduleHubCacheWrite();
+    // Manager profiles are the first historical priority: current season is already
+    // ready, then load the immediately previous season before any older archive.
+    const priorityIds=priorityHistoricalLeagueIds();
+    state.profilePriorityPromise=(async()=>{for(const leagueId of priorityIds){const bundle=await loadSeason(leagueId);if(bundle)freshBundles.push(bundle);await yieldToBrowser()}state.bundles=freshBundles.length?freshBundles:[current||core];state.profilePriorityReady=true;rebuildStateFromBundles();renderForChange('history');upgradeOpenManagerProfile();scheduleHubCacheWrite();return true})();
+    await state.profilePriorityPromise;
+    if(status)status.textContent=`Live · current + previous season ready · verifying markets`;
+    // Anything older than the previous season is deliberately lowest priority.
+    // It hydrates during idle time, or immediately only if a History tab requests it.
+    if(olderHistoricalLeagueIds().length)state.historyReady=false;else state.historyReady=true;
+    scheduleOlderHistoryLoad();
 
     // Power Rankings and Championship Odds are never calculated from partial
     // startup data. Exact season totals start immediately after league history
