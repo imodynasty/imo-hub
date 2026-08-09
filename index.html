@@ -1,183 +1,132 @@
 <!doctype html>
-<html lang="en" class="imo-performance-lite"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#080a10">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="IMO Dynasty">
-<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png?v=3.3.58">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png?v=3.3.58">
-<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png?v=3.3.58">
-<link rel="icon" href="favicon.ico?v=3.3.58">
-<link rel="manifest" href="site.webmanifest?v=3.3.58">
-<link rel="shortcut icon" href="favicon.ico?v=3.3.58">
-<title>IMO DYNASTY</title>
-<link rel="stylesheet" href="styles.css?v=3.3.76">
-</head><body><div class="noise"></div>
-<header class="site-header v26-header">
-  <div class="brand v26-brand">
-    <div class="logo v26-logo brand-mark"><img src="assets/imo-dynasty-mark.svg" alt="IMO Dynasty"></div>
-    <div class="v26-brand-copy"><span class="eyebrow">LIVE LEAGUE HQ</span><h1>IMO DYNASTY</h1><p>Your home for all things IMO Dynasty</p></div>
-  </div>
-  <div class="header-actions v26-header-actions">
-    <span id="statusText">Connecting…</span>
-    <button id="globalSearchBtn" class="global-search-launch" type="button" aria-label="Search IMO Hub" title="Search IMO Hub"><span aria-hidden="true">⌕</span><small>Search</small></button>
-    <button id="managerDirectoryBtn" class="v26-manager-btn branded-action" type="button"><img src="assets/manager-profiles.svg" alt="">Managers</button>
-    <button id="headlinesBtn" class="headlines-btn branded-action" type="button"><img src="assets/imo-insider.svg" alt="">News</button>
-    <button id="mockDraftBtn" class="v26-manager-btn branded-action mock-draft-launch" type="button">27 Mock Draft</button>
-  </div>
-</header>
-<div id="leagueTicker" class="league-ticker" aria-label="Latest IMO Dynasty headlines" hidden></div>
-<main>
-
-<div class="content-shell"><div class="main-column">
-<section class="panel power-rankings-hero v26-power-panel hero-module hero-module-power"><div class="panel-heading"><div><span class="section-brand"><img src="assets/power-rankings.svg" alt=""><span><b>POWER RANKINGS</b><small>THE HOLY GRAIL</small></span></span><h3>Power Rankings</h3><p class="power-rankings-intro">Ranked by power score. Championship odds and form details are built into each row.</p></div><span class="period-pill">Live estimate</span></div><div id="powerRankings" class="rank-list power-rankings-grid loading">Calculating…</div></section>
-<section class="panel trade-week hero-module hero-module-trade"><div class="panel-heading"><div><span class="section-brand"><img src="assets/trade-centre.svg" alt=""><span><b>TRADE CENTRE</b><small>FEATURED MOVE</small></span></span><h3>Trade of the Week</h3></div><span class="period-pill">Weekly standout</span></div><div id="tradeOfWeek" class="loading">Analysing this week's trades…</div><div class="trade-centre-recent"><div class="trade-centre-recent-heading"><div><span class="eyebrow">LATEST MOVES</span><h4>Recent Trades</h4></div><span class="period-pill">Tap to expand</span></div><div id="recentTrades" class="recent-trades trade-centre-recent-list loading">Loading trade history…</div></div></section>
-<section class="panel head-to-head-panel hero-module hero-module-live">
-  <div class="panel-heading head-to-head-heading"><div><span class="eyebrow">LIVE MATCHUP CENTRE</span><h3>HEAD TO HEAD</h3><p>Live matchup markets, key battles, injury notes and rivalry history.</p></div><span id="headToHeadStatus" class="period-pill h2h-status">Loading gameweek</span></div>
-  <div id="headToHead" class="head-to-head-board loading">Loading current matchups…</div>
-</section>
-
-
-
-<section class="dashboard-grid">
-<article class="panel standard-panel form-panel"><div class="panel-heading"><div><span class="eyebrow">📈 LAST FIVE WATCH</span><h3>GOOD FORM</h3></div><span class="period-pill">Biggest risers</span></div><div id="goodForm" class="rank-list loading">Calculating recent form…</div></article>
-<article class="panel standard-panel form-panel"><div class="panel-heading"><div><span class="eyebrow">📉 LAST FIVE WATCH</span><h3>POOR FORM</h3></div><span class="period-pill">Biggest fallers</span></div><div id="poorForm" class="rank-list loading">Calculating recent form…</div></article>
-</section>
-<section class="panel leaderboard-panel standard-panel"><div class="panel-heading active-heading"><div><span class="eyebrow">🥇 THE RANKING</span><h3>Most Active GM</h3></div></div><div class="active-window-nav" aria-label="Most Active GM timeframe"><button class="active-window-btn active" data-active-window="14">14 days</button><button class="active-window-btn" data-active-window="28">28 days</button><button class="active-window-btn" data-active-window="season">2026 season</button><button class="active-window-btn" data-active-window="all">All time</button></div><div id="leaderboard" class="leaderboard loading">Loading teams…</div></section>
-
-
-<div class="league-history-group">
-<div class="league-history-heading"><span class="section-brand"><img src="assets/league-history.svg" alt=""><span><b>LEAGUE HISTORY</b><small>THE ARCHIVES</small></span></span><h2>LEAGUE HISTORY</h2><p>All-time trades, relationships and records from across IMO Dynasty.</p></div>
-<section class="panel biggest-trades-panel"><div class="panel-heading"><div><span class="eyebrow">💥 BLOCKBUSTERS</span><h3>Biggest Ever Trades</h3></div><button id="biggestTradesToggle" class="small-button" type="button">Show top 10</button></div><p class="method-note">Ranked using the league’s private dynasty-value model.</p><div id="biggestTrades" class="biggest-trades-list loading">Calculating the largest trades…</div></section>
-
-<section class="panel heatmap-panel"><div class="panel-heading"><div><span class="eyebrow">🤝 CONNECTIONS</span><h3>Favourite Trade Partners</h3></div><span class="period-pill">Top 5</span></div><div id="tradeHeatmap" class="heatmap-wrap loading">Building heatmap…</div></section>
-
-
-
-
-
-<section class="panel lightweight-panel history-lightweight-panel"><div class="panel-heading"><div><span class="section-brand"><img src="assets/league-history.svg" alt=""><span><b>HISTORY BOOK</b><small>LEAGUE RECORDS</small></span></span><h3>League Records</h3></div></div><div id="leagueRecords" class="records-grid records-grid-eight loading">Calculating records…</div><details class="history-dropdown"><summary>Most traded players ever</summary><div id="tradeBlock" class="rank-list loading">Analysing player movement…</div></details><details class="history-dropdown"><summary>Most waived players ever</summary><div id="waiverBlock" class="rank-list loading">Analysing waiver history…</div></details></section>
-</div>
-
-<section class="panel voting-panel" id="allNbaVoting">
-<div class="panel-heading"><div><span class="section-brand"><img src="assets/awards.svg" alt=""><span><b>IMO AWARDS</b><small>LEAGUE BALLOT</small></span></span><h3>IMO AWARDS VOTING</h3></div><span class="period-pill">Winners announced 1 March</span></div>
-<div id="votingCountdown" class="voting-countdown">Voting opens 23 February 2027</div>
-<p class="voting-intro">All-NBA, MIP and ROY voting opens 23 February, closes 28 February, and winners are announced 1 March. One submission is allowed per ballot on each device.</p>
-<div class="award-voting-grid">
-<article class="ballot-card vote-category" data-category="allNba">
-<div class="vote-lock-overlay" id="allNbaLock"></div>
-<h4>IMO All-NBA Team</h4>
-<p>Select up to 10 players from the top 50 by season fantasy average. The final team is positionless: five starters and five reserves. Results are weighted 35% fan vote and 65% season average.</p>
-<input id="allNbaSearch" class="vote-search" type="search" placeholder="Search top 50 players…">
-<div id="allNbaChoices" class="vote-choices loading">Loading players…</div>
-<div class="vote-count"><span id="allNbaCount">0</span>/10 selected</div>
-<button id="submitAllNba" class="small-button primary-button vote-submit" type="button">Submit All-NBA vote</button>
-<div id="allNbaStatus" class="vote-status"></div>
-</article>
-
-<article class="ballot-card vote-category" data-category="rookie">
-<div class="vote-lock-overlay" id="rookieLock"></div>
-<h4>Rookie of the Year</h4>
-<p>Select one eligible rookie. Options are sorted by current season fantasy average. Results are weighted 35% fan vote and 65% season average.</p>
-<select id="rookieVote" class="vote-select"><option>Loading…</option></select>
-<button id="submitRookie" class="small-button primary-button vote-submit" type="button">Submit ROTY vote</button>
-<div id="rookieStatus" class="vote-status"></div>
-</article>
-
-<article class="ballot-card vote-category" data-category="mip">
-<div class="vote-lock-overlay" id="mipLock"></div>
-<h4>Most Improved Player</h4>
-<p>Select one player. Results are weighted 50% fan vote and 50% improvement from the 2025 season to the 2026 season.</p>
-<select id="mipVote" class="vote-select"><option>Loading…</option></select>
-<button id="submitMip" class="small-button primary-button vote-submit" type="button">Submit MIP vote</button>
-<div id="mipStatus" class="vote-status"></div>
-</article>
-</div>
-</section>
-
-</div></div>
-</main>
-
-
-<div id="globalSearchModal" class="global-search-modal" aria-hidden="true">
-  <div class="global-search-backdrop" data-close-global-search></div>
-  <section class="global-search-sheet" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
-    <button id="globalSearchClose" class="global-search-close" type="button" aria-label="Close global search">×</button>
-    <div class="global-search-heading"><span class="eyebrow">ENTITY FINDER</span><h2 id="globalSearchTitle">Search IMO Hub</h2><p>Find players, managers, draft picks and trades.</p></div>
-    <label class="global-search-field"><span aria-hidden="true">⌕</span><input id="globalSearchInput" type="search" autocomplete="off" placeholder="Try ‘2028 Mara’ or ‘Luka’"></label>
-    <div id="globalSearchResults" class="global-search-results"></div>
-  </section>
-</div>
-
-<div id="headlinesModal" class="headlines-modal" aria-hidden="true">
-  <div class="headlines-backdrop" data-close-headlines></div>
-  <section class="headlines-sheet" role="dialog" aria-modal="true" aria-labelledby="headlinesTitle">
-    <button id="headlinesClose" class="headlines-close" type="button" aria-label="Close headlines">×</button>
-    <div id="headlinesContent" class="headlines-content"></div>
-  </section>
-</div>
-<div id="managerDirectoryModal" class="manager-directory-modal" aria-hidden="true">
-  <div class="manager-directory-backdrop" data-close-manager-directory></div>
-  <section class="manager-directory-sheet" role="dialog" aria-modal="true" aria-labelledby="managerDirectoryTitle">
-    <button id="managerDirectoryClose" class="manager-directory-close" type="button" aria-label="Close manager directory">×</button>
-    <div class="manager-directory-heading">
-      <span class="section-brand compact"><img src="assets/manager-profiles.svg" alt=""><span><b>FRANCHISE DIRECTORY</b><small>MANAGER PROFILES</small></span></span>
-      <h2 id="managerDirectoryTitle">Manager Profiles</h2>
-      <p>Select any team to open its manager profile.</p>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#090b12" />
+<title>IMO Dynasty — Top 200 Ranker</title>
+<style>
+:root{--bg:#090b12;--panel:#111520;--panel2:#171c29;--text:#f7f8fb;--muted:#9099aa;--line:#252c3c;--accent:#b8ff5a;--pick:#bda6ff;--danger:#ff6b6b}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0,#172033 0,transparent 35%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.shell{max-width:1050px;margin:0 auto;padding:28px 18px 70px}.top{position:sticky;top:0;z-index:20;background:rgba(9,11,18,.93);backdrop-filter:blur(16px);padding:18px 0 14px;border-bottom:1px solid var(--line)}
+.kicker{font-size:11px;font-weight:800;letter-spacing:.18em;color:var(--accent);text-transform:uppercase}h1{font-size:clamp(28px,5vw,48px);line-height:1;margin:8px 0 8px;letter-spacing:-.04em}.sub{color:var(--muted);margin:0 0 16px;max-width:760px;line-height:1.5}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap}.toolbar input,.toolbar button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit}.toolbar input{min-width:230px;flex:1}.toolbar button{cursor:pointer;font-weight:700}.toolbar button:hover{border-color:#48516a}.status{margin-top:10px;color:var(--muted);font-size:12px}.status.error{color:var(--danger)}
+.head,.row{display:grid;grid-template-columns:54px 42px minmax(210px,1fr) 105px 74px 36px;gap:12px;align-items:center}.head{padding:16px 12px 8px;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.list{display:flex;flex-direction:column;gap:6px}.row{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-height:64px;transition:.14s ease;user-select:none}.row[draggable="true"]{cursor:grab;touch-action:none}.row.dragging{opacity:.35}.row.drag-over{border-color:var(--accent);transform:translateY(2px)}.row.empty{opacity:.46;background:transparent;border-style:dashed}.row.pick{border-color:#40375d;background:linear-gradient(180deg,#1c1830,#131523)}
+.rank{font-size:17px;font-weight:900;color:#c9d0dc;text-align:center}.avatar{width:42px;height:42px;border-radius:50%;background:#222838;overflow:hidden;display:grid;place-items:center;font-weight:900;color:#748099}.avatar img{width:100%;height:100%;object-fit:cover}.pick .avatar{color:var(--pick);font-size:21px}.name{min-width:0}.name strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}.name small{display:block;color:var(--muted);font-size:11px;margin-top:3px}.metric b{display:block;font-size:14px}.metric span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em}.handle{font-size:22px;color:#687387;text-align:center;touch-action:none}.row.touch-dragging{opacity:.7;outline:2px solid var(--accent)}.empty .name strong{color:#687387;font-weight:700}.row:nth-child(50){margin-bottom:22px;position:relative}.row:nth-child(50)::after{content:'TOP 50';position:absolute;left:0;right:0;bottom:-16px;height:3px;background:var(--accent);border-radius:999px;box-shadow:0 0 12px rgba(184,255,90,.28)}.row:nth-child(50)::before{content:'TOP 50';position:absolute;right:10px;bottom:-23px;background:var(--bg);color:var(--accent);font-size:9px;font-weight:900;letter-spacing:.12em;padding:0 6px;z-index:2}.hidden{display:none!important}.footer-note{color:var(--muted);font-size:12px;margin:18px 4px;line-height:1.5}
+@media(max-width:680px){.shell{padding:16px 10px 50px}.head,.row{grid-template-columns:40px 38px minmax(145px,1fr) 72px 52px 26px;gap:7px}.row{padding:8px 7px}.head{padding-left:7px;padding-right:7px}.avatar{width:38px;height:38px}.name strong{font-size:13px}.metric b{font-size:12px}.metric span{font-size:8px}.sub{font-size:13px}.toolbar button{font-size:12px}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <section class="top">
+    <div class="kicker">IMO Dynasty</div>
+    <h1>Top 200 Dynasty Ranker</h1>
+    <p class="sub">Top NBA players ranked by 2025 IMO fantasy average, with Cameron Boozer, Darryn Peterson, AJ Dybantsa and Caleb Wilson included. Player data is now embedded as a mobile-safe fallback, while live Sleeper data is used when available.</p>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search player or pick…" autocomplete="off" />
+      <button id="reset" type="button">Reset ranking</button>
+      <button id="export" type="button">Export CSV</button>
+      <button id="importBtn" type="button">Import CSV</button>
+      <input id="importFile" type="file" accept=".csv,text/csv" hidden />
     </div>
-    <div id="managerDirectoryList" class="manager-directory-list"></div>
+    <div id="status" class="status">Loading 2025 league scoring + Sleeper player data…</div>
   </section>
+
+  <div class="head"><span>Rank</span><span></span><span>Player / Asset</span><span>2025 AVG</span><span>Age</span><span></span></div>
+  <main id="list" class="list"></main>
+  <p class="footer-note">Your custom ranking is saved automatically in this browser. On mobile, press and drag a row to reorder it. Use Export/Import CSV to move a ranking between devices or from the original local HTML to this hosted version.</p>
 </div>
-<div id="managerProfileModal" class="manager-profile-modal" aria-hidden="true">
-  <div class="manager-profile-backdrop" data-close-manager-profile></div>
-  <section class="manager-profile-sheet" role="dialog" aria-modal="true" aria-labelledby="managerProfileTitle">
-    <button id="managerProfileClose" class="manager-profile-close" type="button" aria-label="Close manager profile">×</button>
-    <div id="managerProfileContent" class="manager-profile-content"></div>
-  </section>
-</div>
-<div id="archetypeGuideModal" class="archetype-guide-modal" aria-hidden="true">
-  <div class="archetype-guide-backdrop" data-close-archetype-guide></div>
-  <section class="archetype-guide-sheet" role="dialog" aria-modal="true" aria-labelledby="archetypeGuideTitle">
-    <button id="archetypeGuideClose" class="archetype-guide-close" type="button" aria-label="Close archetype guide">×</button>
-    <div class="archetype-guide-heading"><span class="eyebrow">GM PROFILE GUIDE</span><h2 id="archetypeGuideTitle">Manager Archetypes</h2><p>A guide to every front-office identity used across IMO Dynasty.</p></div>
-    <div id="archetypeGuideList" class="archetype-guide-list"></div>
-  </section>
-</div>
-<div id="mockDraftModal" class="mock-draft-modal" aria-hidden="true">
-  <div class="mock-draft-backdrop" data-close-mock-draft></div>
-  <section class="mock-draft-sheet" role="dialog" aria-modal="true" aria-labelledby="mockDraftTitle">
-    <button id="mockDraftClose" class="mock-draft-close" type="button" aria-label="Close 2027 mock draft">×</button>
-    <div id="mockDraftContent" class="mock-draft-content"></div>
-  </section>
-</div>
-<div id="managerPicksMadeModal" class="manager-picks-modal" aria-hidden="true">
-  <div class="manager-picks-backdrop" data-close-manager-picks></div>
-  <section class="manager-picks-sheet" role="dialog" aria-modal="true" aria-labelledby="managerPicksMadeTitle">
-    <button id="managerPicksMadeClose" class="manager-picks-close" type="button" aria-label="Close picks made">×</button>
-    <div id="managerPicksMadeContent" class="manager-picks-content"></div>
-  </section>
-</div>
-<div id="tradeReturnTreeModal" class="trade-return-tree-modal" aria-hidden="true">
-  <div class="trade-return-tree-backdrop" data-close-return-tree></div>
-  <section class="trade-return-tree-sheet" role="dialog" aria-modal="true" aria-labelledby="tradeReturnTreeTitle">
-    <button id="tradeReturnTreeClose" class="trade-return-tree-close" type="button" aria-label="Close trade return tree">×</button>
-    <div id="tradeReturnTreeContent" class="trade-return-tree-content"></div>
-  </section>
-</div>
-<div id="pickHistoryModal" class="pick-history-modal" aria-hidden="true">
-  <div class="pick-history-backdrop" data-close-pick-history></div>
-  <section class="pick-history-sheet" role="dialog" aria-modal="true" aria-labelledby="pickHistoryTitle">
-    <button id="pickHistoryClose" class="pick-history-close" type="button" aria-label="Close draft pick history">×</button>
-    <div id="pickHistoryContent" class="pick-history-content"></div>
-  </section>
-</div>
-<div id="playerHistoryModal" class="player-history-modal" aria-hidden="true">
-  <div class="player-history-backdrop" data-close-player-history></div>
-  <section class="player-history-sheet" role="dialog" aria-modal="true" aria-labelledby="playerHistoryTitle">
-    <button id="playerHistoryClose" class="player-history-close" type="button" aria-label="Close player history">×</button>
-    <div id="playerHistoryContent" class="player-history-content"></div>
-  </section>
-</div>
-<footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V3.3.74 · Not affiliated with Sleeper</span></footer>
-<script src="app.js?v=3.3.76"></script></body></html>
+<script>
+const LEAGUE_2025='1212553673821929472';
+const PLAYER_API='https://api.sleeper.app/v1/players/nba';
+const LEAGUE_API=`https://api.sleeper.app/v1/league/${LEAGUE_2025}`;
+const STATS_API='https://api.sleeper.com/stats/nba/2025?season_type=regular&order_by=pts_std&position%5B%5D=PG&position%5B%5D=SG&position%5B%5D=SF&position%5B%5D=PF&position%5B%5D=C&position%5B%5D=G&position%5B%5D=F';
+const STORE='imo-dynasty-top200-v2';
+const OFFLINE_PLAYERS=[{"id":"offline-nikola-joki","type":"player","name":"Nikola Jokić","position":"Melbourne Long Necks · C","avg":41.5,"age":31},{"id":"offline-luka-don-i","type":"player","name":"Luka Dončić","position":"THANOS · PG","avg":35.91,"age":27},{"id":"offline-victor-wembanyama","type":"player","name":"Victor Wembanyama","position":"THANOS · C","avg":34.67,"age":22},{"id":"offline-jalen-johnson","type":"player","name":"Jalen Johnson","position":"Melbourne Long Necks · PF","avg":31.45,"age":24},{"id":"offline-cade-cunningham","type":"player","name":"Cade Cunningham","position":"Handles and Havoc · PG","avg":30.03,"age":24},{"id":"offline-giannis-antetokounmpo","type":"player","name":"Giannis Antetokounmpo","position":"THANOS · PF","avg":30.03,"age":31},{"id":"offline-jayson-tatum","type":"player","name":"Jayson Tatum","position":"THANOS · SF","avg":29.72,"age":28},{"id":"offline-shai-gilgeous-alexander","type":"player","name":"Shai Gilgeous-Alexander","position":"Charity Stripe LLC · PG","avg":29.62,"age":28},{"id":"offline-tyrese-maxey","type":"player","name":"Tyrese Maxey","position":"Sengooning · PG","avg":29.47,"age":25},{"id":"offline-anthony-davis","type":"player","name":"Anthony Davis","position":"Melbourne Long Necks · C","avg":28.82,"age":33},{"id":"offline-kawhi-leonard","type":"player","name":"Kawhi Leonard","position":"Handles and Havoc · SF","avg":27.98,"age":35},{"id":"offline-josh-giddey","type":"player","name":"Josh Giddey","position":"THANOS · PG","avg":27.65,"age":23},{"id":"offline-alperen-eng-n","type":"player","name":"Alperen Şengün","position":"Sengooning · C","avg":27.6,"age":24},{"id":"offline-walker-kessler","type":"player","name":"Walker Kessler","position":"Sengooning · C","avg":27.2,"age":25},{"id":"offline-joel-embiid","type":"player","name":"Joel Embiid","position":"Melbourne Long Necks · C","avg":26.95,"age":32},{"id":"offline-jaylen-brown","type":"player","name":"Jaylen Brown","position":"FlintLovesMeSexy · SF","avg":26.8,"age":29},{"id":"offline-karl-anthony-towns","type":"player","name":"Karl-Anthony Towns","position":"Charity Stripe LLC · C","avg":26.78,"age":30},{"id":"offline-bam-adebayo","type":"player","name":"Bam Adebayo","position":"THANOS · C","avg":26.77,"age":29},{"id":"offline-donovan-mitchell","type":"player","name":"Donovan Mitchell","position":"Sengooning · SG","avg":26.6,"age":29},{"id":"offline-scottie-barnes","type":"player","name":"Scottie Barnes","position":"The House Of Patience · PF","avg":26.56,"age":25},{"id":"offline-jamal-murray","type":"player","name":"Jamal Murray","position":"Charity Stripe LLC · PG","avg":26.48,"age":29},{"id":"offline-anthony-edwards","type":"player","name":"Anthony Edwards","position":"Handles and Havoc · SG","avg":26.26,"age":25},{"id":"offline-james-harden","type":"player","name":"James Harden","position":"Melbourne Long Necks · PG","avg":26.16,"age":36},{"id":"offline-deni-avdija","type":"player","name":"Deni Avdija","position":"THANOS · PF","avg":26.14,"age":25},{"id":"offline-evan-mobley","type":"player","name":"Evan Mobley","position":"Sengooning · C","avg":25.8,"age":25},{"id":"offline-lauri-markkanen","type":"player","name":"Lauri Markkanen","position":"FlintLovesMeSexy · PF","avg":25.57,"age":29},{"id":"offline-lebron-james","type":"player","name":"LeBron James","position":"Handles and Havoc · PF","avg":25.52,"age":41},{"id":"offline-paolo-banchero","type":"player","name":"Paolo Banchero","position":"THANOS · PF","avg":25.27,"age":23},{"id":"offline-kevin-porter","type":"player","name":"Kevin Porter","position":"Handles and Havoc · PG","avg":24.99,"age":26},{"id":"offline-kevin-durant","type":"player","name":"Kevin Durant","position":"Charity Stripe LLC · SF","avg":24.76,"age":37},{"id":"offline-michael-porter","type":"player","name":"Michael Porter","position":"FlintLovesMeSexy · SF","avg":24.55,"age":28},{"id":"offline-amen-thompson","type":"player","name":"Amen Thompson","position":"Melbourne Long Necks · SG","avg":24.52,"age":23},{"id":"offline-cooper-flagg","type":"player","name":"Cooper Flagg","position":"THANOS · SG","avg":24.42,"age":19},{"id":"offline-domantas-sabonis","type":"player","name":"Domantas Sabonis","position":"Handles and Havoc · C","avg":24.32,"age":30},{"id":"offline-jalen-duren","type":"player","name":"Jalen Duren","position":"FlintLovesMeSexy · C","avg":24.31,"age":22},{"id":"offline-stephen-curry","type":"player","name":"Stephen Curry","position":"Handles and Havoc · PG","avg":24.3,"age":38},{"id":"offline-lamelo-ball","type":"player","name":"LaMelo Ball","position":"Handles and Havoc · PG","avg":24.23,"age":24},{"id":"offline-pascal-siakam","type":"player","name":"Pascal Siakam","position":"Charity Stripe LLC · PF","avg":24.23,"age":32},{"id":"offline-donovan-clingan","type":"player","name":"Donovan Clingan","position":"The House Of Patience · C","avg":24.16,"age":22},{"id":"offline-jalen-brunson","type":"player","name":"Jalen Brunson","position":"FlintLovesMeSexy · PG","avg":24.14,"age":29},{"id":"offline-trey-murphy","type":"player","name":"Trey Murphy","position":"FlintLovesMeSexy · SG","avg":23.89,"age":26},{"id":"offline-chet-holmgren","type":"player","name":"Chet Holmgren","position":"Charity Stripe LLC · C","avg":23.78,"age":24},{"id":"offline-austin-reaves","type":"player","name":"Austin Reaves","position":"Sengooning · SG","avg":23.28,"age":28},{"id":"offline-julius-randle","type":"player","name":"Julius Randle","position":"FlintLovesMeSexy · PF","avg":23.28,"age":31},{"id":"offline-alex-sarr","type":"player","name":"Alex Sarr","position":"The House Of Patience · C","avg":23.05,"age":21},{"id":"offline-devin-booker","type":"player","name":"Devin Booker","position":"FlintLovesMeSexy · SG","avg":22.95,"age":29},{"id":"offline-jusuf-nurki","type":"player","name":"Jusuf Nurkić","position":"Handles and Havoc · C","avg":22.88,"age":31},{"id":"offline-jimmy-butler","type":"player","name":"Jimmy Butler","position":"Charity Stripe LLC · SF","avg":22.87,"age":36},{"id":"offline-zach-edey","type":"player","name":"Zach Edey","position":"Sengooning · C","avg":22.86,"age":24},{"id":"offline-keyonte-george","type":"player","name":"Keyonte George","position":"Melbourne Long Necks · PG","avg":22.69,"age":22},{"id":"offline-derrick-white","type":"player","name":"Derrick White","position":"Charity Stripe LLC · SG","avg":22.56,"age":32},{"id":"offline-rudy-gobert","type":"player","name":"Rudy Gobert","position":"FlintLovesMeSexy · C","avg":22.41,"age":34},{"id":"offline-onyeka-okongwu","type":"player","name":"Onyeka Okongwu","position":"Sengooning · C","avg":22.22,"age":25},{"id":"offline-dyson-daniels","type":"player","name":"Dyson Daniels","position":"Melbourne Long Necks · PG","avg":22.15,"age":23},{"id":"offline-stephon-castle","type":"player","name":"Stephon Castle","position":"The House Of Patience · SG","avg":21.87,"age":21},{"id":"offline-dejounte-murray","type":"player","name":"Dejounte Murray","position":"Handles and Havoc · PG","avg":21.75,"age":29},{"id":"offline-nikola-vu-evi","type":"player","name":"Nikola Vučević","position":"THANOS · C","avg":21.71,"age":35},{"id":"offline-paul-george","type":"player","name":"Paul George","position":"FlintLovesMeSexy · SF","avg":21.69,"age":36},{"id":"offline-brandon-ingram","type":"player","name":"Brandon Ingram","position":"Sengooning · SF","avg":21.53,"age":28},{"id":"offline-ryan-rollins","type":"player","name":"Ryan Rollins","position":"Melbourne Long Necks · PG","avg":21.28,"age":24},{"id":"offline-ja-morant","type":"player","name":"Ja Morant","position":"Mara Juana · PG","avg":21.23,"age":26},{"id":"offline-jaren-jackson","type":"player","name":"Jaren Jackson","position":"Mara Juana · C","avg":21.22,"age":26},{"id":"offline-ivica-zubac","type":"player","name":"Ivica Zubac","position":"THANOS · C","avg":21.18,"age":29},{"id":"offline-vj-edgecombe","type":"player","name":"VJ Edgecombe","position":"Mara Juana · SG","avg":21.08,"age":21},{"id":"offline-de-aaron-fox","type":"player","name":"De'Aaron Fox","position":"Charity Stripe LLC · PG","avg":21.06,"age":28},{"id":"offline-immanuel-quickley","type":"player","name":"Immanuel Quickley","position":"THANOS · PG","avg":21.01,"age":27},{"id":"offline-brandon-miller","type":"player","name":"Brandon Miller","position":"Sengooning · SF","avg":20.9,"age":23},{"id":"offline-nickeil-alexander-walker","type":"player","name":"Nickeil Alexander-Walker","position":"Mara Juana · SG","avg":20.88,"age":27},{"id":"offline-jarrett-allen","type":"player","name":"Jarrett Allen","position":"Charity Stripe LLC · C","avg":20.78,"age":28},{"id":"offline-tyler-herro","type":"player","name":"Tyler Herro","position":"Charity Stripe LLC · SG","avg":20.74,"age":26},{"id":"offline-zion-williamson","type":"player","name":"Zion Williamson","position":"Melbourne Long Necks · PF","avg":20.62,"age":26},{"id":"offline-franz-wagner","type":"player","name":"Franz Wagner","position":"Melbourne Long Necks · SF","avg":20.6,"age":24},{"id":"offline-desmond-bane","type":"player","name":"Desmond Bane","position":"Charity Stripe LLC · SG","avg":20.3,"age":28},{"id":"offline-jalen-williams","type":"player","name":"Jalen Williams","position":"Mara Juana · PF","avg":20.27,"age":25},{"id":"offline-josh-hart","type":"player","name":"Josh Hart","position":"Handles and Havoc · SG","avg":20.15,"age":31},{"id":"offline-trae-young","type":"player","name":"Trae Young","position":"Sengooning · PG","avg":19.93,"age":27},{"id":"offline-andrew-nembhard","type":"player","name":"Andrew Nembhard","position":"FlintLovesMeSexy · PG","avg":19.92,"age":26},{"id":"offline-jabari-smith","type":"player","name":"Jabari Smith","position":"Mara Juana · PF","avg":19.88,"age":23},{"id":"offline-jalen-suggs","type":"player","name":"Jalen Suggs","position":"Mara Juana · PG","avg":19.84,"age":25},{"id":"offline-isaiah-hartenstein","type":"player","name":"Isaiah Hartenstein","position":"Mara Juana · C","avg":19.83,"age":28},{"id":"offline-og-anunoby","type":"player","name":"OG Anunoby","position":"Handles and Havoc · PF","avg":19.81,"age":29},{"id":"offline-kon-knueppel","type":"player","name":"Kon Knueppel","position":"Mara Juana · SG","avg":19.73,"age":21},{"id":"offline-matas-buzelis","type":"player","name":"Matas Buzelis","position":"Charity Stripe LLC · PF","avg":19.67,"age":21},{"id":"offline-keegan-murray","type":"player","name":"Keegan Murray","position":"Melbourne Long Necks · PF","avg":19.61,"age":25},{"id":"offline-santi-aldama","type":"player","name":"Santi Aldama","position":"Mara Juana · PF","avg":19.58,"age":25},{"id":"offline-rj-barrett","type":"player","name":"RJ Barrett","position":"Mara Juana · SF","avg":19.54,"age":26},{"id":"offline-payton-pritchard","type":"player","name":"Payton Pritchard","position":"Melbourne Long Necks · PG","avg":19.5,"age":28},{"id":"offline-kristaps-porzi-is","type":"player","name":"Kristaps Porziņģis","position":"THANOS · C","avg":19.48,"age":31},{"id":"offline-darius-garland","type":"player","name":"Darius Garland","position":"FlintLovesMeSexy · PG","avg":19.48,"age":26},{"id":"offline-miles-bridges","type":"player","name":"Miles Bridges","position":"Mara Juana · PF","avg":19.38,"age":28},{"id":"offline-kyshawn-george","type":"player","name":"Kyshawn George","position":"The House Of Patience · SF","avg":19.36,"age":22},{"id":"offline-kel-el-ware","type":"player","name":"Kel'el Ware","position":"Mara Juana · C","avg":19.21,"age":22},{"id":"offline-nic-claxton","type":"player","name":"Nic Claxton","position":"THANOS · C","avg":18.93,"age":27},{"id":"offline-cj-mccollum","type":"player","name":"CJ McCollum","position":"Mara Juana · PG","avg":18.74,"age":34},{"id":"offline-naz-reid","type":"player","name":"Naz Reid","position":"Charity Stripe LLC · C","avg":18.68,"age":26},{"id":"offline-shaedon-sharpe","type":"player","name":"Shaedon Sharpe","position":"Charity Stripe LLC · SG","avg":18.63,"age":23},{"id":"offline-derik-queen","type":"player","name":"Derik Queen","position":"Handles and Havoc · C","avg":18.56,"age":21},{"id":"offline-ausar-thompson","type":"player","name":"Ausar Thompson","position":"Mara Juana · SG","avg":18.27,"age":23},{"id":"offline-anthony-black","type":"player","name":"Anthony Black","position":"Charity Stripe LLC · SG","avg":18.09,"age":22},{"id":"offline-jaime-jaquez","type":"player","name":"Jaime Jaquez","position":"THANOS · PF","avg":17.84,"age":25},{"id":"offline-brandin-podziemski","type":"player","name":"Brandin Podziemski","position":"FlintLovesMeSexy · PG","avg":17.76,"age":23},{"id":"offline-mark-williams","type":"player","name":"Mark Williams","position":"FlintLovesMeSexy · C","avg":17.69,"age":24},{"id":"offline-peyton-watson","type":"player","name":"Peyton Watson","position":"The House Of Patience · SF","avg":17.61,"age":23},{"id":"offline-myles-turner","type":"player","name":"Myles Turner","position":"Sengooning · C","avg":17.44,"age":30},{"id":"offline-reed-sheppard","type":"player","name":"Reed Sheppard","position":"Charity Stripe LLC · PG","avg":17.35,"age":22},{"id":"offline-deandre-ayton","type":"player","name":"Deandre Ayton","position":"Sengooning · C","avg":17.34,"age":28},{"id":"offline-jalen-green","type":"player","name":"Jalen Green","position":"Melbourne Long Necks · SG","avg":17.11,"age":24},{"id":"offline-cedric-coward","type":"player","name":"Cedric Coward","position":"Charity Stripe LLC · SG","avg":16.92,"age":22},{"id":"offline-bilal-coulibaly","type":"player","name":"Bilal Coulibaly","position":"Melbourne Long Necks · SF","avg":16.7,"age":22},{"id":"offline-jakob-poeltl","type":"player","name":"Jakob Poeltl","position":"THANOS · C","avg":16.66,"age":30},{"id":"offline-maxime-raynaud","type":"player","name":"Maxime Raynaud","position":"Mara Juana · C","avg":16.43,"age":23},{"id":"offline-mitchell-robinson","type":"player","name":"Mitchell Robinson","position":"FlintLovesMeSexy · C","avg":16.2,"age":28},{"id":"offline-jaylon-tyson","type":"player","name":"Jaylon Tyson","position":"The House Of Patience · SF","avg":16.16,"age":23},{"id":"offline-ajay-mitchell","type":"player","name":"Ajay Mitchell","position":"Sengooning · PG","avg":16.13,"age":24},{"id":"offline-coby-white","type":"player","name":"Coby White","position":"The House Of Patience · PG","avg":16.07,"age":26},{"id":"offline-tari-eason","type":"player","name":"Tari Eason","position":"Mara Juana · SG","avg":15.92,"age":25},{"id":"offline-jeremiah-fears","type":"player","name":"Jeremiah Fears","position":"Sengooning · PG","avg":15.82,"age":19},{"id":"offline-ace-bailey","type":"player","name":"Ace Bailey","position":"Melbourne Long Necks · SF","avg":15.54,"age":19},{"id":"offline-dylan-cardwell","type":"player","name":"Dylan Cardwell","position":"FlintLovesMeSexy · C","avg":15.45,"age":24},{"id":"offline-davion-mitchell","type":"player","name":"Davion Mitchell","position":"THANOS · PG","avg":15.33,"age":27},{"id":"offline-day-ron-sharpe","type":"player","name":"Day'Ron Sharpe","position":"The House Of Patience · C","avg":14.96,"age":24},{"id":"offline-scoot-henderson","type":"player","name":"Scoot Henderson","position":"The House Of Patience · PG","avg":14.73,"age":22},{"id":"offline-dylan-harper","type":"player","name":"Dylan Harper","position":"The House Of Patience · SG","avg":14.52,"age":20},{"id":"offline-collin-murray-boyles","type":"player","name":"Collin Murray-Boyles","position":"Sengooning · C","avg":14.15,"age":21},{"id":"offline-egor-d-min","type":"player","name":"Egor Dëmin","position":"Handles and Havoc · SG","avg":13.65,"age":20},{"id":"offline-danny-wolf","type":"player","name":"Danny Wolf","position":"Handles and Havoc · PF","avg":13.32,"age":22},{"id":"offline-ryan-kalkbrenner","type":"player","name":"Ryan Kalkbrenner","position":"THANOS · C","avg":13.15,"age":24},{"id":"offline-yves-missi","type":"player","name":"Yves Missi","position":"THANOS · C","avg":12.99,"age":22},{"id":"offline-zaccharie-risacher","type":"player","name":"Zaccharie Risacher","position":"The House Of Patience · SF","avg":12.57,"age":21},{"id":"offline-paul-reed","type":"player","name":"Paul Reed","position":"Handles and Havoc · C","avg":12.56,"age":27},{"id":"offline-dereck-lively","type":"player","name":"Dereck Lively","position":"Charity Stripe LLC · C","avg":12.43,"age":22},{"id":"offline-tre-johnson","type":"player","name":"Tre Johnson","position":"Melbourne Long Necks · SG","avg":12.23,"age":20},{"id":"offline-nique-clifford","type":"player","name":"Nique Clifford","position":"FlintLovesMeSexy · SG","avg":11.97,"age":24},{"id":"offline-will-riley","type":"player","name":"Will Riley","position":"Melbourne Long Necks · SF","avg":11.12,"age":20},{"id":"offline-nolan-traore","type":"player","name":"Nolan Traore","position":"Sengooning · PG","avg":10.86,"age":20},{"id":"offline-walter-clayton","type":"player","name":"Walter Clayton","position":"Sengooning · PG","avg":10.8,"age":23},{"id":"offline-kasparas-jaku-ionis","type":"player","name":"Kasparas Jakučionis","position":"The House Of Patience · PG","avg":9.64,"age":20},{"id":"offline-nikola-topi","type":"player","name":"Nikola Topić","position":"THANOS · PG","avg":8.6,"age":20},{"id":"offline-rob-dillingham","type":"player","name":"Rob Dillingham","position":"FlintLovesMeSexy · PG","avg":7.92,"age":21},{"id":"offline-hugo-gonz-lez","type":"player","name":"Hugo González","position":"THANOS · SF","avg":7.44,"age":20},{"id":"offline-carter-bryant","type":"player","name":"Carter Bryant","position":"Sengooning · PF","avg":6.41,"age":20},{"id":"offline-joan-beringer","type":"player","name":"Joan Beringer","position":"The House Of Patience · C","avg":6.15,"age":19},{"id":"offline-khaman-maluach","type":"player","name":"Khaman Maluach","position":"The House Of Patience · C","avg":5.89,"age":19},{"id":"offline-yang-hansen","type":"player","name":"Yang Hansen","position":"THANOS · C","avg":3.3,"age":21},{"id":"offline-noa-essengue","type":"player","name":"Noa Essengue","position":"Melbourne Long Necks · PF","avg":1.0,"age":19},{"id":"offline-tyrese-haliburton","type":"player","name":"Tyrese Haliburton","position":"PG","avg":0,"age":26},{"id":"offline-kyrie-irving","type":"player","name":"Kyrie Irving","position":"PG","avg":0,"age":34}];
+const list=document.getElementById('list'),statusEl=document.getElementById('status'),searchEl=document.getElementById('search');
+let assets=[],dragId=null;
+
+const aliases={pts:['pts'],reb:['reb'],ast:['ast'],stl:['stl'],blk:['blk'],to:['to','turnovers'],fgm:['fgm'],fga:['fga'],fgmi:['fgmi'],ftm:['ftm'],fta:['fta'],ftmi:['ftmi'],tpm:['tpm'],tpa:['tpa'],tpmi:['tpmi'],oreb:['oreb'],dreb:['dreb'],pf:['pf'],tf:['tf'],ff:['ff'],dd:['dd'],td:['td'],bonus_double_double:['bonus_double_double','dd'],bonus_triple_double:['bonus_triple_double','td'],bonus_pt_15p:['bonus_pt_15p'],bonus_pt_20p:['bonus_pt_20p'],bonus_pt_25p:['bonus_pt_25p'],bonus_pt_30p:['bonus_pt_30p'],bonus_pt_35p:['bonus_pt_35p'],bonus_pt_40p:['bonus_pt_40p'],bonus_pt_45p:['bonus_pt_45p'],bonus_pt_50p:['bonus_pt_50p'],bonus_ast_10p:['bonus_ast_10p'],bonus_ast_15p:['bonus_ast_15p'],bonus_ast_20p:['bonus_ast_20p'],bonus_reb_10p:['bonus_reb_10p'],bonus_reb_15p:['bonus_reb_15p'],bonus_reb_20p:['bonus_reb_20p'],bonus_stl_5p:['bonus_stl_5p'],bonus_blk_5p:['bonus_blk_5p'],bonus_3pm_5p:['bonus_3pm_5p'],bonus_3pm_10p:['bonus_3pm_10p'],plus_minus:['plus_minus'],pts_reb_ast:['pts_reb_ast'],reb_ast:['reb_ast'],blk_stl:['blk_stl']};
+function scoreStats(stats,scoring){let total=0,matched=0;Object.entries(scoring||{}).forEach(([key,m])=>{const mult=Number(m);if(!Number.isFinite(mult)||mult===0)return;for(const k of (aliases[key]||[key])){const n=Number(stats?.[k]);if(Number.isFinite(n)){total+=n*mult;matched++;break}}});return matched?total:null}
+function ageMultiplier(age){if(age<=19)return 1.18;if(age===20)return 1.20;if(age===21)return 1.22;if(age===22)return 1.23;if(age===23)return 1.24;if(age===24||age===25)return 1.25;if(age===26)return 1.24;if(age===27)return 1.22;if(age===28)return 1.18;if(age===29)return 1.12;if(age===30)return 1.05;if(age===31)return .98;if(age===32)return .92;if(age===33)return .88;if(age===34)return .84;if(age===35)return .80;return .76}
+function eliteMultiplier(avg){if(avg>=40)return 1.40;if(avg>=35)return 1.28;if(avg>=30)return 1.18;if(avg>=25)return 1.10;if(avg>=20)return 1.05;if(avg>=10)return 1.02;return 1}
+function dynastyScore(avg,age){return avg*ageMultiplier(age)*eliteMultiplier(avg)}
+function rows(payload){if(Array.isArray(payload))return payload;if(Array.isArray(payload?.data))return payload.data;if(Array.isArray(payload?.players))return payload.players;if(Array.isArray(payload?.stats))return payload.stats;if(payload&&typeof payload==='object')return Object.entries(payload).map(([id,v])=>v&&typeof v==='object'?{...v,player_id:v.player_id??v.playerId??id}:null).filter(Boolean);return[]}
+function pid(r){return String(r?.player_id??r?.playerId??r?.id??r?.metadata?.player_id??'')}
+function statObj(r){return r?.stats&&typeof r.stats==='object'?r.stats:(r?.stat&&typeof r.stat==='object'?r.stat:r)}
+function playerName(p,id){return p?.full_name||[p?.first_name,p?.last_name].filter(Boolean).join(' ')||`Player ${id}`}
+function validNBA(p){return p && p.active!==false && (p.sport==='nba'||p.team||p.position||p.fantasy_positions)}
+function offlineBase(){const base=[...OFFLINE_PLAYERS.map(x=>({...x})),...seedPicks()];while(base.length<200)base.push({id:`empty-${base.length+1}`,type:'empty',name:'Empty ranking slot',avg:null,age:null});return base.slice(0,200)}
+function seedPicks(){return [
+{id:'pick-2026-1',type:'pick',name:'Cameron Boozer',avg:null,age:null,position:'2026 Rookie'},
+{id:'pick-2026-2',type:'pick',name:'Darryn Peterson',avg:null,age:null,position:'2026 Rookie'},
+{id:'pick-2026-3',type:'pick',name:'AJ Dybantsa',avg:null,age:null,position:'2026 Rookie'},
+{id:'pick-2026-4',type:'pick',name:'Caleb Wilson',avg:null,age:null,position:'2026 Rookie'}
+]}
+function loadSavedOrder(base){try{const saved=JSON.parse(localStorage.getItem(STORE)||'null');if(!Array.isArray(saved)||!saved.length)return base;const map=new Map(base.map(x=>[x.id,x]));const ordered=[];saved.forEach(id=>{if(map.has(id)){ordered.push(map.get(id));map.delete(id)}else if(String(id).startsWith('empty-'))ordered.push({id,type:'empty',name:'Empty ranking slot',avg:null,age:null})});const newAssets=[...map.values()].filter(x=>x.type!=='empty');for(const asset of newAssets){const emptyIndex=ordered.findIndex(x=>x.type==='empty');if(emptyIndex>=0)ordered[emptyIndex]=asset;else ordered.push(asset);map.delete(asset.id)}map.forEach(v=>{if(ordered.length<200)ordered.push(v)});return ordered.slice(0,200)}catch{return base}}
+function save(){localStorage.setItem(STORE,JSON.stringify(assets.map(x=>x.id)))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){const q=searchEl.value.trim().toLowerCase();list.innerHTML=assets.map((a,i)=>{const hide=q&&!`${a.name} ${a.position||''}`.toLowerCase().includes(q);const isEmpty=a.type==='empty',isPick=a.type==='pick';return `<div class="row ${isEmpty?'empty':''} ${isPick?'pick':''} ${hide?'hidden':''}" draggable="true" data-id="${esc(a.id)}"><div class="rank">${i+1}</div><div class="avatar">${a.type==='player'?(String(a.id).startsWith('offline-')?esc((a.name||'?').split(/\s+/).map(x=>x[0]).slice(0,2).join('')):`<img src="https://sleepercdn.com/content/nba/players/${esc(a.id)}.jpg" alt="" loading="lazy" onerror="this.remove();this.parentElement.textContent='${esc((a.name||'?').split(/\s+/).map(x=>x[0]).slice(0,2).join(''))}'">`):isPick?'◆':'—'}</div><div class="name"><strong>${esc(a.name)}</strong><small>${esc(a.position|| (isEmpty?'Drag an asset here':''))}</small></div><div class="metric"><b>${a.avg==null?'—':Number(a.avg).toFixed(2)}</b><span>FPTS/G</span></div><div class="metric"><b>${a.age==null?'—':a.age}</b><span>AGE</span></div><div class="handle">⋮⋮</div></div>`}).join('');bindDrag()}
+function bindDrag(){document.querySelectorAll('.row').forEach(row=>{row.addEventListener('dragstart',e=>{dragId=row.dataset.id;row.classList.add('dragging');e.dataTransfer.effectAllowed='move'});row.addEventListener('dragend',()=>{dragId=null;document.querySelectorAll('.row').forEach(x=>x.classList.remove('dragging','drag-over'))});row.addEventListener('dragover',e=>{e.preventDefault();row.classList.add('drag-over')});row.addEventListener('dragleave',()=>row.classList.remove('drag-over'));row.addEventListener('drop',e=>{e.preventDefault();row.classList.remove('drag-over');const target=row.dataset.id;if(!dragId||dragId===target)return;const from=assets.findIndex(x=>x.id===dragId),to=assets.findIndex(x=>x.id===target);if(from<0||to<0)return;const [moved]=assets.splice(from,1);assets.splice(to,0,moved);save();render()})})}
+async function init(){try{const [league,players,statPayload]=await Promise.all([fetch(LEAGUE_API).then(r=>{if(!r.ok)throw Error('League request failed');return r.json()}),fetch(PLAYER_API).then(r=>{if(!r.ok)throw Error('Player request failed');return r.json()}),fetch(STATS_API).then(r=>{if(!r.ok)throw Error('Stats request failed');return r.json()})]);const scoring=league.scoring_settings||{};const ranked=[];for(const r of rows(statPayload)){const id=pid(r),p=players[id];if(!id||!validNBA(p))continue;const s=statObj(r),gp=Number(s?.gp),total=scoreStats(s,scoring),avg=gp>0&&Number.isFinite(total)?total/gp:0,age=Number(p.age);if(!avg||!Number.isFinite(age)||age<18||age>45)continue;ranked.push({id,type:'player',name:playerName(p,id),position:[p.team,p.position||p.fantasy_positions?.[0]].filter(Boolean).join(' · '),avg,age})}ranked.sort((a,b)=>b.avg-a.avg||a.name.localeCompare(b.name));const top=ranked.slice(0,150);const forcedNames=['Tyrese Haliburton','Kyrie Irving'];for(const targetName of forcedNames){if(top.some(x=>x.name===targetName))continue;let extra=ranked.find(x=>x.name===targetName);if(!extra){const found=Object.entries(players).find(([,p])=>playerName(p,'')===targetName);if(found){const [id,p]=found;const age=Number(p.age);extra={id:String(id),type:'player',name:targetName,position:[p.team,p.position||p.fantasy_positions?.[0]].filter(Boolean).join(' · '),avg:null,age:Number.isFinite(age)?age:null}}}if(extra)top.push(extra)}let base=[...top,...seedPicks()];while(base.length<200)base.push({id:`empty-${base.length+1}`,type:'empty',name:'Empty ranking slot',avg:null,age:null});assets=loadSavedOrder(base);while(assets.length<200)assets.push({id:`empty-${assets.length+1}`,type:'empty',name:'Empty ranking slot',avg:null,age:null});assets=assets.slice(0,200);render();statusEl.textContent=`Loaded ${top.length} players + 4 2026 rookies · Tyrese Haliburton and Kyrie Irving are included · ranking autosaves locally.`}catch(err){console.warn('Sleeper live data unavailable; using embedded offline snapshot.',err);statusEl.className='status';statusEl.textContent=`Offline snapshot loaded · ${OFFLINE_PLAYERS.length} NBA players + 4 2026 rookies · no Sleeper connection required.`;assets=offlineBase();render()}}
+searchEl.addEventListener('input',render);
+document.getElementById('reset').addEventListener('click',()=>{localStorage.removeItem(STORE);location.reload()});
+document.getElementById('export').addEventListener('click',()=>{const csv=['Rank,Asset,Type,2025 Average,Age',...assets.map((a,i)=>[i+1,`"${String(a.name).replaceAll('"','""')}"`,a.type,a.avg==null?'':Number(a.avg).toFixed(2),a.age??''].join(','))].join('\n');const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='IMO_Dynasty_Top_200_Rankings.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+
+// Import a previously exported ranking by player/asset name. This is useful when moving
+// from the original local HTML file to the GitHub Pages version, where localStorage has
+// a different origin and therefore cannot be transferred automatically.
+const importFile=document.getElementById('importFile');
+document.getElementById('importBtn').addEventListener('click',()=>importFile.click());
+importFile.addEventListener('change',async()=>{
+  const file=importFile.files?.[0]; if(!file)return;
+  try{
+    const raw=await file.text();
+    const lines=raw.split(/\r?\n/).filter(Boolean).slice(1);
+    const orderedNames=[];
+    for(const line of lines){
+      const m=line.match(/^\s*\d+,"((?:""|[^"])*)"/);
+      if(m)orderedNames.push(m[1].replace(/""/g,'"'));
+    }
+    if(!orderedNames.length)throw new Error('No ranked assets found');
+    const pool=new Map();
+    assets.forEach(a=>{const key=(a.name||'').trim().toLowerCase();if(key&&!pool.has(key))pool.set(key,a)});
+    const next=[]; const used=new Set();
+    for(const name of orderedNames){const a=pool.get(name.trim().toLowerCase());if(a&&!used.has(a.id)){next.push(a);used.add(a.id)}}
+    assets.forEach(a=>{if(!used.has(a.id))next.push(a)});
+    assets=next.slice(0,200); save(); render();
+    statusEl.className='status'; statusEl.textContent=`Imported ${used.size} ranked assets from CSV · ranking saved on this device.`;
+  }catch(err){console.error(err);statusEl.className='status error';statusEl.textContent='Could not import that CSV. Please use a CSV exported from this ranker.'}
+  importFile.value='';
+});
+
+// Touch/pointer reordering for iPhone/iPad Safari. Desktop drag-and-drop remains intact.
+let touchDragId=null,touchStartY=0,touchMoved=false;
+list.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse')return;
+  const row=e.target.closest('.row'); if(!row)return;
+  touchDragId=row.dataset.id; touchStartY=e.clientY; touchMoved=false;
+  row.classList.add('touch-dragging');
+  try{row.setPointerCapture(e.pointerId)}catch{}
+});
+list.addEventListener('pointermove',e=>{
+  if(!touchDragId||e.pointerType==='mouse')return;
+  if(Math.abs(e.clientY-touchStartY)>6)touchMoved=true;
+  if(!touchMoved)return;
+  e.preventDefault();
+  const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('.row');
+  if(!target||target.dataset.id===touchDragId)return;
+  const from=assets.findIndex(x=>x.id===touchDragId),to=assets.findIndex(x=>x.id===target.dataset.id);
+  if(from<0||to<0)return;
+  const [moved]=assets.splice(from,1); assets.splice(to,0,moved); save(); render();
+});
+function endTouchDrag(){touchDragId=null;touchMoved=false;document.querySelectorAll('.row').forEach(r=>r.classList.remove('touch-dragging'))}
+list.addEventListener('pointerup',endTouchDrag);list.addEventListener('pointercancel',endTouchDrag);
+
+init();
+</script>
+</body>
+</html>
