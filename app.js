@@ -194,7 +194,7 @@ function tradePlayerValue(playerId,average,t){
 function tradeAssets(raw){
   const t=normaliseTrade(raw),by={};mids(t).forEach(id=>by[id]=[]);
   Object.entries(t.adds).forEach(([pid,rid])=>{try{const mid=t.roster_owner_map?.[String(rid)];if(!mid||!by[mid])return;const average=tradeSeasonAverage(pid,t);by[mid].push({type:"player",id:pid,name:playerName(pid),value:tradePlayerValue(pid,average,t),average,topTenBonus:topTenSeasonAverageIds(t).has(String(pid))})}catch(error){console.warn('Skipped malformed traded player',pid,error)}});
-  t.draft_picks.forEach(p=>{try{if(!p||typeof p!=='object')return;const mid=t.roster_owner_map?.[String(p.owner_id)];if(!mid||!by[mid])return;const round=Number(p.round)||0,season=p.season||"Future",original=pickOriginalOwner(p,t),drafted=draftedPlayerForPick(p),pickLabel=`${season} ${roundWord(round)} Round Pick${original?` ${original}`:""}`;const value=fixedPickValue(round),average=0;by[mid].push({type:"pick",id:drafted||null,pickKey:pickAssetKey(p),pick:{...p,_trade:t},name:drafted?`${playerName(drafted)} (${pickLabel})`:`${season} Round ${round||'—'} Pick`,owner:drafted?null:original,value,average})}catch(error){console.warn('Skipped malformed traded pick',p,error)}});
+  t.draft_picks.forEach(p=>{try{if(!p||typeof p!=='object')return;const mid=t.roster_owner_map?.[String(p.owner_id)];if(!mid||!by[mid])return;const round=Number(p.round)||0,season=p.season||"Future",original=pickOriginalOwner(p,t),drafted=draftedPlayerForPick(p),pickLabel=`${season} ${roundWord(round)} Round Pick${original?` ${original}`:""}`;const value=fixedPickValue(round),average=0;by[mid].push({type:"pick",id:drafted||null,pickKey:pickAssetKey(p),pick:{...p,_trade:t},round,name:drafted?`${playerName(drafted)} (${pickLabel})`:`${season} Round ${round||'—'} Pick`,owner:drafted?null:original,value,average})}catch(error){console.warn('Skipped malformed traded pick',p,error)}});
   return by
 }
 function tradeValue(t){return Object.values(tradeAssets(t)).flat().reduce((sum,asset)=>sum+(Number(asset.value)||0),0)}
@@ -202,7 +202,7 @@ function tradeValue(t){return Object.values(tradeAssets(t)).flat().reduce((sum,a
 function tradeOutgoingAssets(raw){
   const t=normaliseTrade(raw),by={};mids(t).forEach(id=>by[id]=[]);
   Object.entries(t.drops||{}).forEach(([pid,rid])=>{try{const mid=t.roster_owner_map?.[String(rid)];if(!mid||!by[mid])return;const average=tradeSeasonAverage(pid,t);by[mid].push({type:"player",id:pid,name:playerName(pid),value:tradePlayerValue(pid,average,t),average,age:playerAgeAt(pid,t.created),topTenBonus:topTenSeasonAverageIds(t).has(String(pid))})}catch(error){console.warn('Skipped malformed outgoing player',pid,error)}});
-  safeArray(t.draft_picks).forEach(p=>{try{if(!p||typeof p!=='object')return;const mid=t.roster_owner_map?.[String(p.previous_owner_id)];if(!mid||!by[mid])return;const round=Number(p.round)||1,season=p.season||"Future",drafted=draftedPlayerForPick(p),value=fixedPickValue(round),average=0;by[mid].push({type:"pick",id:drafted||null,name:drafted?playerName(drafted):`${season} Round ${round} Pick`,value,average,age:drafted?playerAgeAt(drafted,t.created):20})}catch(error){console.warn('Skipped malformed outgoing pick',p,error)}});
+  safeArray(t.draft_picks).forEach(p=>{try{if(!p||typeof p!=='object')return;const mid=t.roster_owner_map?.[String(p.previous_owner_id)];if(!mid||!by[mid])return;const round=Number(p.round)||1,season=p.season||"Future",drafted=draftedPlayerForPick(p),value=fixedPickValue(round),average=0;by[mid].push({type:"pick",id:drafted||null,round,name:drafted?playerName(drafted):`${season} Round ${round} Pick`,value,average,age:drafted?playerAgeAt(drafted,t.created):20})}catch(error){console.warn('Skipped malformed outgoing pick',p,error)}});
   return by
 }
 function tradeSideMetrics(t,managerId){
@@ -217,9 +217,26 @@ function tradeSideMetrics(t,managerId){
   // scored with the same diminishing-return curve so collecting extra B/C assets
   // cannot automatically overpower a single elite dynasty player.
   const packageWeights=[1.00,0.85,0.70,0.55];
-  const weightedPackageValue=assets=>[...assets]
-    .sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0))
-    .reduce((sum,a,index)=>sum+(Number(a.value)||0)*(packageWeights[index]??0.40),0);
+  // First-round picks have their own diminishing-return curve when multiple
+  // firsts are bundled on the same side. This is applied only inside trade
+  // grading; the normal IMO pick values shown elsewhere remain unchanged.
+  // Highest-value first keeps full value, then 85%, 75%, 65%, and 60% for 5+.
+  const firstRoundWeights=[1.00,0.85,0.75,0.65];
+  const weightedPackageValue=assets=>{
+    const firsts=[...assets]
+      .filter(a=>a.type==='pick'&&Number(a.round||a.pick?.round||0)===1)
+      .sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0));
+    const firstRank=new Map(firsts.map((asset,index)=>[asset,index]));
+    const effective=[...assets].map(asset=>{
+      const value=Number(asset.value)||0;
+      const rank=firstRank.get(asset);
+      const firstMultiplier=rank===undefined?1:(firstRoundWeights[rank]??0.60);
+      return {asset,effectiveValue:value*firstMultiplier};
+    });
+    return effective
+      .sort((a,b)=>b.effectiveValue-a.effectiveValue)
+      .reduce((sum,row,index)=>sum+row.effectiveValue*(packageWeights[index]??0.40),0);
+  };
   const weightedReceivedValue=weightedPackageValue(received);
   const weightedSentValue=weightedPackageValue(sent);
 
