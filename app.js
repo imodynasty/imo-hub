@@ -1,4 +1,4 @@
-/* IMO DYNASTY V3.3.77 — Manager Profile Performance Priority */
+/* IMO DYNASTY V3.3.79 — Ticker Motion + Player Name Resolution */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -136,6 +136,18 @@ function buildPlayerAverages(bundle,throughWeek=Infinity){
 }
 function prepareModels(){state.modelBundle=selectModelBundle();const weeks=meaningfulWeeks(state.modelBundle),last=weeks.at(-1)||Infinity,prior=weeks.length>1?weeks.at(-2):last;state.previousPowerRanks=Object.fromEntries(modelRows(state.modelBundle,prior,"power").map(x=>[x.id,x.rank]));state.playerAverages=buildPlayerAverages(state.modelBundle,last)}
 function playerName(id){const p=state.players[id]||{};return p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" ")||`Player ${id}`}
+function refreshResolvedPlayerNames(){
+  // Lightweight DOM repair for content that was rendered before Sleeper's full
+  // player directory arrived. This avoids rebuilding expensive Hub modules just
+  // to replace temporary "Player 2289" labels.
+  document.querySelectorAll('[data-player-id]').forEach(el=>{
+    const id=String(el.dataset.playerId||'');if(!id)return;const name=playerName(id);
+    if(name&&!/^Player \d+$/.test(name)){const current=String(el.textContent||'').trim();if(!current||/^Player \d+$/.test(current))el.textContent=name}
+  });
+  document.querySelectorAll('[data-unresolved-player-id]').forEach(el=>{
+    const id=String(el.dataset.unresolvedPlayerId||'');if(!id)return;const name=playerName(id);if(name&&!/^Player \d+$/.test(name))el.textContent=name
+  })
+}
 function playerLink(id,name=playerName(id),className=""){return `<button type="button" class="player-history-link ${className}" data-player-id="${esc(String(id))}">${esc(name)}</button>`}
 function pickOriginalOwner(p,t){const owner=t.roster_owner_map?.[String(p.roster_id)];return owner?managerName(owner,t):null}
 function roundWord(n){return ({1:"First",2:"Second",3:"Third",4:"Fourth",5:"Fifth"})[Number(n)]||`Round ${n}`}
@@ -2432,7 +2444,6 @@ function renderTicker(){
   try{
     const stories=[],add=value=>{if(Array.isArray(value))stories.push(...value.filter(Boolean));else if(value)stories.push(value)};
     try{add(tickerPlayerRumours())}catch(error){console.warn("Ticker rumours unavailable",error)}
-    try{const good=recentPlayerForm()?.good?.slice(0,2)||[];add(good.map(x=>`${x?.name||'Player'} is in good form, averaging ${Number(x?.recentAvg||0).toFixed(1)} FPTS over the last 5`))}catch(error){console.warn("Ticker form unavailable",error)}
     safeArray(state.trades).filter(Boolean).slice(0,2).forEach(raw=>{try{add(shortTradeHeadline(normaliseTrade(raw)))}catch(error){console.warn('Ticker skipped malformed trade',error)}});
     for(const builder of [tickerMatchup,tickerStreak,tickerRankingOrRecord,tickerDrought]){try{add(builder())}catch(error){console.warn("Ticker story unavailable",error)}}
     add("IMO Awards voting opens 23 February · closes 28 February");
@@ -2440,7 +2451,10 @@ function renderTicker(){
     if(!unique.length)unique.push("IMO Dynasty · Live League HQ");
     const group=unique.map((text,i)=>`<span class="ticker-item">${esc(text)}</span>${i<unique.length-1?'<span class="ticker-dot">•</span>':''}`).join('');
     root.innerHTML=`<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group">${group}</div><div class="ticker-group" aria-hidden="true">${group}</div></div></div>`;
-  }catch(error){console.error('Ticker render failed',error);root.innerHTML='<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div></div></div>'}
+    // Keep ticker motion independent from the rest of the site's animation
+    // preferences/performance CSS. No game-log hydration is required for this.
+    const track=root.querySelector('.ticker-track');if(track){track.style.animation='ticker-loop 72s linear infinite';track.style.animationPlayState='running'}
+  }catch(error){console.error('Ticker render failed',error);root.innerHTML='<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div><div class="ticker-group" aria-hidden="true"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div></div></div>';const track=root.querySelector('.ticker-track');if(track)track.style.animation='ticker-loop 72s linear infinite'}
 }
 async function loadTickerGameLogs(){const season=String(tradeTargetAverageContext().season||state.modelBundle?.league?.season||'2025'),ids=[...new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)))],scoring=seasonBundleForStats(season)?.league?.scoring_settings||state.modelBundle?.league?.scoring_settings||{};if(!ids.length)return;const rows=await limitedMap(ids,6,async id=>{const result=await loadPlayerGameLogAverage(id,season,scoring);return result?{id,...result}:null});state.gameLogs[season]??={};rows.filter(Boolean).forEach(row=>state.gameLogs[season][row.id]=row.rows||[]);renderForChange('gameLogs')}
 
@@ -3223,9 +3237,12 @@ async function ensureFullPlayerDirectory(){
   if(state.fullPlayerDirectoryPromise)return state.fullPlayerDirectoryPromise;
   state.fullPlayerDirectoryPromise=getJSON(`${CONFIG.api}/players/nba`,true).then(players=>{
     if(players&&typeof players==='object'){
-      state.players=players;state.fullPlayerDirectoryLoaded=true;state.globalSearchIndex=null;
+      state.players={...state.players,...players};state.fullPlayerDirectoryLoaded=true;state.globalSearchIndex=null;
       scheduleHubCacheWrite();
-      rerenderVisibleLazyModules();
+      refreshResolvedPlayerNames();
+      // Refresh only the small modules where a player name can be plain text;
+      // avoid a full Hub rerender when the directory resolves.
+      safeRender('ticker player names',renderTicker);
       const modal=$('managerProfileModal');if(modal?.classList.contains('open')&&modal.dataset.managerId)clearManagerProfileCachedHTML(modal.dataset.managerId);
     }
     return state.players;
@@ -3339,10 +3356,13 @@ async function load(){
     // Game-log dependent features are hydrated only when their relevant section
     // enters view or a manager Roster tab is opened. The ticker no longer causes
     // a league-wide player game-log sweep during startup.
-    if(!Object.keys(state.players||{}).length){
-      const idlePlayers=()=>ensureFullPlayerDirectory().catch(()=>{});
-      if('requestIdleCallback' in window)requestIdleCallback(idlePlayers,{timeout:20000});else setTimeout(idlePlayers,12000);
-    }else state.fullPlayerDirectoryLoaded=true;
+    if(!state.fullPlayerDirectoryLoaded){
+      // Names are core presentation data, but the large directory must never
+      // block interaction. Begin it shortly after the critical league/profile
+      // path is ready, then patch unresolved labels in-place when it arrives.
+      const resolvePlayerNames=()=>ensureFullPlayerDirectory().catch(()=>{});
+      if('requestIdleCallback' in window)requestIdleCallback(resolvePlayerNames,{timeout:3500});else setTimeout(resolvePlayerNames,1800);
+    }
   }catch(e){
     console.error('IMO DYNASTY load failed:',e);if(status)status.textContent=state.snapshotApplied?'Cached data · refresh unavailable':'Could not load Sleeper data';
     if(!state.snapshotApplied){safeRender('recent trades fallback',renderRecent);safeRender('biggest trades fallback',renderBiggestTrades);safeRender('ticker fallback',renderTicker)}
