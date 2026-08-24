@@ -1,4 +1,4 @@
-/* IMO DYNASTY V3.3.79 — Ticker Motion + Player Name Resolution */
+/* IMO DYNASTY V3.3.80 — Immediate Ticker Motion */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -2438,6 +2438,23 @@ function tickerMatchup(){const bundle=state.bundles.find(b=>String(b.league?.lea
 function tickerStreak(){if(!state.modelBundle)return null;const outcomes=outcomesForBundle(state.modelBundle),rows=[];Object.entries(outcomes).forEach(([id,games])=>{let type=null,count=0;for(let i=games.length-1;i>=0;i--){const next=games[i].result===1?'W':games[i].result===0?'L':'T';if(next==='T')break;if(type===null)type=next;if(next!==type)break;count++}if(count>=2)rows.push({id,type,count})});rows.sort((a,b)=>b.count-a.count);const x=rows[0];return x?`${x.type==='W'?'Hot streak':'Cold streak'}: ${managerName(x.id)} ${x.type==='W'?'has won':'has lost'} ${x.count} straight`:null}
 function tickerDrought(){const best=longestTradeDroughtSince();return best?`${best.m.name} recorded the longest trade drought since October 2025 at ${best.days} days`:null}
 
+function startTickerMotion(root){
+  const track=root?.querySelector('.ticker-track'),group=track?.querySelector('.ticker-group');
+  if(!track||!group)return;
+  const begin=()=>{
+    const distance=Math.max(1,Math.round(group.getBoundingClientRect().width));
+    const duration=Math.max(14,distance/58);
+    track.style.setProperty('--ticker-distance',`${distance}px`);
+    track.style.setProperty('--ticker-duration',`${duration.toFixed(2)}s`);
+    track.style.animation='none';
+    track.offsetWidth;
+    track.style.animation=`ticker-scroll-var ${duration.toFixed(2)}s linear infinite`;
+    track.style.animationDelay='-0.35s';
+    track.style.animationPlayState='running';
+  };
+  begin();
+  requestAnimationFrame(begin);
+}
 function renderTicker(){
   const root=$("leagueTicker");if(!root)return;
   root.hidden=false;
@@ -2451,10 +2468,10 @@ function renderTicker(){
     if(!unique.length)unique.push("IMO Dynasty · Live League HQ");
     const group=unique.map((text,i)=>`<span class="ticker-item">${esc(text)}</span>${i<unique.length-1?'<span class="ticker-dot">•</span>':''}`).join('');
     root.innerHTML=`<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group">${group}</div><div class="ticker-group" aria-hidden="true">${group}</div></div></div>`;
-    // Keep ticker motion independent from the rest of the site's animation
-    // preferences/performance CSS. No game-log hydration is required for this.
-    const track=root.querySelector('.ticker-track');if(track){track.style.animation='ticker-loop 72s linear infinite';track.style.animationPlayState='running'}
-  }catch(error){console.error('Ticker render failed',error);root.innerHTML='<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div><div class="ticker-group" aria-hidden="true"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div></div></div>';const track=root.querySelector('.ticker-track');if(track)track.style.animation='ticker-loop 72s linear infinite'}
+    // Start immediately and size the loop to the actual duplicated headline width.
+    // This avoids a visually stagnant ticker on wide screens and does not wait on extra data.
+    startTickerMotion(root)
+  }catch(error){console.error('Ticker render failed',error);root.innerHTML='<span class="ticker-live">LIVE</span><div class="ticker-window"><div class="ticker-track"><div class="ticker-group"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div><div class="ticker-group" aria-hidden="true"><span class="ticker-item">IMO Dynasty · Live League HQ</span></div></div></div>';startTickerMotion(root)}
 }
 async function loadTickerGameLogs(){const season=String(tradeTargetAverageContext().season||state.modelBundle?.league?.season||'2025'),ids=[...new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)))],scoring=seasonBundleForStats(season)?.league?.scoring_settings||state.modelBundle?.league?.scoring_settings||{};if(!ids.length)return;const rows=await limitedMap(ids,6,async id=>{const result=await loadPlayerGameLogAverage(id,season,scoring);return result?{id,...result}:null});state.gameLogs[season]??={};rows.filter(Boolean).forEach(row=>state.gameLogs[season][row.id]=row.rows||[]);renderForChange('gameLogs')}
 
