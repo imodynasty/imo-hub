@@ -12,7 +12,7 @@
 <link rel="manifest" href="site.webmanifest?v=3.3.58">
 <link rel="shortcut icon" href="favicon.ico?v=3.3.58">
 <title>IMO DYNASTY</title>
-<link rel="stylesheet" href="styles.css?v=3.3.80">
+<link rel="stylesheet" href="styles.css?v=3.3.81">
 </head><body><div class="noise"></div>
 <header class="site-header v26-header">
   <div class="brand v26-brand">
@@ -22,9 +22,15 @@
   <div class="header-actions v26-header-actions">
     <span id="statusText">Connecting…</span>
     <button id="globalSearchBtn" class="global-search-launch" type="button" aria-label="Search IMO Hub" title="Search IMO Hub"><span aria-hidden="true">⌕</span><small>Search</small></button>
-    <button id="managerDirectoryBtn" class="v26-manager-btn branded-action" type="button"><img src="assets/manager-profiles.svg" alt="">Managers</button>
-    <button id="headlinesBtn" class="headlines-btn branded-action" type="button"><img src="assets/imo-insider.svg" alt="">News</button>
-    <button id="mockDraftBtn" class="v26-manager-btn branded-action mock-draft-launch" type="button">27 Mock Draft</button>
+    <details class="hub-nav-menu">
+      <summary class="hub-nav-trigger" aria-label="Open IMO Hub menu"><span aria-hidden="true">☰</span><small>League</small></summary>
+      <div class="hub-nav-popover">
+        <button id="headlinesBtn" class="hub-nav-item" type="button"><img src="assets/imo-insider.svg" alt=""><span><strong>News</strong><small>IMO Insider</small></span></button>
+        <button id="managerDirectoryBtn" class="hub-nav-item" type="button"><img src="assets/manager-profiles.svg" alt=""><span><strong>Managers</strong><small>Team HQs</small></span></button>
+        <button id="mockDraftBtn" class="hub-nav-item" type="button"><span class="hub-nav-glyph" aria-hidden="true">27</span><span><strong>27 Mock Draft</strong><small>Draft Room</small></span></button>
+        <a class="hub-nav-item" href="https://imodynasty.github.io/bigboard/" aria-label="Open Your Big Board"><span class="hub-nav-glyph" aria-hidden="true">☷</span><span><strong>Your Big Board</strong><small>Personal rankings</small></span></a>
+      </div>
+    </details>
   </div>
 </header>
 <div id="leagueTicker" class="league-ticker" aria-label="Latest IMO Dynasty headlines" hidden></div>
@@ -180,4 +186,4 @@
   </section>
 </div>
 <footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V3.3.80 · Not affiliated with Sleeper</span></footer>
-<script src="app.js?v=3.3.80"></script></body></html>
+<script src="app.js?v=3.3.81"></script></body></html>

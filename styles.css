@@ -2322,3 +2322,54 @@ html.imo-performance-lite .trade-return-tree-sheet{
   .panel,.metric{box-shadow:0 8px 22px rgba(0,0,0,.18)!important}
   .hero-module::before,.hero-module::after{display:none!important}
 }
+
+
+/* V3.3.81 — compact League dropdown navigation */
+.hub-nav-menu{position:relative;flex:0 0 auto}
+.hub-nav-menu>summary{list-style:none}
+.hub-nav-menu>summary::-webkit-details-marker{display:none}
+.hub-nav-trigger{
+  height:34px;min-width:72px;padding:0 10px;border:1px solid rgba(143,115,255,.42);
+  border-radius:10px;background:linear-gradient(135deg,#271d50,#3c2877);color:#fff;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
+  font:900 10px/1 system-ui,sans-serif;letter-spacing:.02em;
+}
+.hub-nav-trigger>span{font-size:14px;line-height:1}
+.hub-nav-trigger small{font:900 10px/1 system-ui,sans-serif;color:#fff}
+.hub-nav-menu[open] .hub-nav-trigger{border-color:rgba(196,181,253,.75);background:linear-gradient(135deg,#35236d,#51389c)}
+.hub-nav-popover{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:260px;padding:7px;
+  border:1px solid rgba(148,163,184,.2);border-radius:14px;background:#0b0f17;
+  box-shadow:0 18px 45px rgba(0,0,0,.38);display:grid;gap:4px;
+}
+.hub-nav-item{
+  width:100%;min-width:0;padding:10px;border:0;border-radius:10px;background:transparent;color:#fff;
+  display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;text-align:left;
+  text-decoration:none;cursor:pointer;font:inherit;
+}
+.hub-nav-item:hover,.hub-nav-item:focus-visible{background:rgba(143,115,255,.11);outline:none}
+.hub-nav-item img,.hub-nav-glyph{
+  width:34px;height:34px;border-radius:9px;background:rgba(143,115,255,.11);
+  display:grid;place-items:center;object-fit:contain;padding:6px;color:#c4b5fd;
+  font:1000 11px/1 system-ui,sans-serif;
+}
+.hub-nav-item>span:last-child{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hub-nav-item strong{font-size:11px;line-height:1.2}
+.hub-nav-item small{font-size:9px;color:var(--muted,#94a3b8);line-height:1.2}
+
+@media(max-width:760px){
+  .site-header.v26-header{min-height:78px!important}
+  .v26-header-actions{
+    grid-template-columns:32px minmax(0,1fr)!important;
+    justify-content:end;
+  }
+  .hub-nav-menu{width:100%;min-width:0}
+  .hub-nav-trigger{width:100%;height:32px;min-width:0;padding:0 10px}
+  .hub-nav-trigger small{font-size:9px}
+  .hub-nav-popover{
+    position:fixed;left:8px;right:8px;top:76px;width:auto;padding:8px;border-radius:15px;
+  }
+  .hub-nav-item{padding:11px 10px}
+  .hub-nav-item strong{font-size:12px}
+  .hub-nav-item small{font-size:9px}
+}

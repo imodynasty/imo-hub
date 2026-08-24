@@ -3435,6 +3435,8 @@ document.addEventListener("pointerup",e=>{
 });
 
 document.addEventListener("click",e=>{
+  const hubNav=e.target.closest?.(".hub-nav-menu");
+  if(hubNav&&!e.target.closest(".hub-nav-trigger")){setTimeout(()=>{hubNav.open=false},0)}
   if(e.target.closest("#globalSearchBtn")){openGlobalSearch();return}
   if(e.target.closest("[data-close-global-search]")||e.target.closest("#globalSearchClose")){closeGlobalSearch();return}
   if(e.target.closest("[data-global-search-back]")){renderGlobalSearchResults($("globalSearchInput")?.value||"");return}
