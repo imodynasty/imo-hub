@@ -2441,19 +2441,59 @@ function tickerDrought(){const best=longestTradeDroughtSince();return best?`${be
 function startTickerMotion(root){
   const track=root?.querySelector('.ticker-track'),group=track?.querySelector('.ticker-group');
   if(!track||!group)return;
+
+  // Cancel any prior ticker motion before restarting after a re-render.
+  try{track._imoTickerAnimation?.cancel?.()}catch(_){}
+  if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
+
   const begin=()=>{
-    const distance=Math.max(1,Math.round(group.getBoundingClientRect().width));
-    const duration=Math.max(14,distance/58);
-    track.style.setProperty('--ticker-distance',`${distance}px`);
-    track.style.setProperty('--ticker-duration',`${duration.toFixed(2)}s`);
-    track.style.animation='none';
-    track.offsetWidth;
-    track.style.animation=`ticker-scroll-var ${duration.toFixed(2)}s linear infinite`;
-    track.style.animationDelay='-0.35s';
-    track.style.animationPlayState='running';
+    const distance=Math.max(1,Math.round(group.scrollWidth||group.getBoundingClientRect().width||1));
+    const speed=54; // px/sec — deliberately visible but still readable.
+    const durationMs=Math.max(12000,(distance/speed)*1000);
+
+    // Primary path: Web Animations API. This avoids browser-specific CSS calc()
+    // parsing issues and guarantees the track begins translating immediately.
+    if(typeof track.animate==='function'){
+      try{
+        track.style.animation='none';
+        track.style.transform='translate3d(0,0,0)';
+        const animation=track.animate(
+          [
+            {transform:'translate3d(0px,0,0)'},
+            {transform:`translate3d(-${distance}px,0,0)`}
+          ],
+          {duration:durationMs,iterations:Infinity,easing:'linear'}
+        );
+        animation.currentTime=Math.min(400,durationMs*0.03);
+        animation.play();
+        track._imoTickerAnimation=animation;
+        return;
+      }catch(error){console.warn('Ticker WAAPI fallback engaged',error)}
+    }
+
+    // Fallback for older browsers: direct requestAnimationFrame translation.
+    const started=performance.now()-350;
+    const tick=now=>{
+      if(!track.isConnected)return;
+      const elapsed=(now-started)/1000;
+      const x=-((elapsed*speed)%distance);
+      track.style.transform=`translate3d(${x}px,0,0)`;
+      track._imoTickerRaf=requestAnimationFrame(tick);
+    };
+    track._imoTickerRaf=requestAnimationFrame(tick);
   };
+
+  // Run once immediately, then once more after layout so the measured loop
+  // width is correct even during the first paint.
   begin();
-  requestAnimationFrame(begin);
+  requestAnimationFrame(()=>{
+    if(track._imoTickerAnimation){
+      const oldAnimation=track._imoTickerAnimation;
+      try{oldAnimation.cancel()}catch(_){}
+    }
+    if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
+    begin();
+  });
 }
 function renderTicker(){
   const root=$("leagueTicker");if(!root)return;
