@@ -293,12 +293,17 @@ function tradeSideMetrics(t,managerId){
   return result
 }
 function packageGradePoints(edge,net){
-  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-9?5:edge>=-19?4:edge>=-31?3:2;
+  // V3.3.83: normal dynasty trades should generally live in the C-to-A+ range.
+  // D territory is now reserved for clearly lopsided outcomes rather than ordinary
+  // preference/fit disagreements. F/Fleece remain governed separately below.
+  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-14?5:edge>=-30?4:3;
   // Small-value trades cannot produce sensational grades solely from percentage swings.
   if(points>=9&&net<12)points=net>=8?8:net>=4?7:6;
   if(points===8&&net<7)points=net>=4?7:net>=2?6:5;
   if(points===7&&net<3)points=6;
-  if(points<=2&&net>-18)points=3;
+  // A harsh percentage gap on a relatively small absolute loss should still be D+
+  // rather than a full D. Full D now needs both a sizeable relative and real-value loss.
+  if(points===3&&net>-22)points=4;
   return points
 }
 function gradeFromPoints(points,m){
