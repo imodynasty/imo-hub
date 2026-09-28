@@ -1542,9 +1542,29 @@ function chemistrySelectedPoints(row,pid){
   }
   return null;
 }
-function chemistryRowsForPlayerWeek(playerId,season,week,scoring,anchor=null){
-  const rows=safeArray(state.gameLogs?.[String(season)]?.[String(playerId)]),directRows=rows.filter(row=>chemistryDirectWeek(row)!==null),pool=directRows.length?directRows.filter(row=>Number(chemistryDirectWeek(row))===Number(week)):rows.filter(row=>Number(chemistryWeekForGame(row,season,anchor))===Number(week));
-  return pool.filter(gameWasPlayed).map(row=>({row,fpts:rawFantasyPoints(row,scoring)})).filter(x=>Number.isFinite(Number(x.fpts)));
+function chemistryScoredGameRows(playerId,season,scoring){
+  return safeArray(state.gameLogs?.[String(season)]?.[String(playerId)]).filter(gameWasPlayed).map(row=>({row,fpts:rawFantasyPoints(row,scoring),date:chemistryGameDateValue(row)})).filter(x=>Number.isFinite(Number(x.fpts)));
+}
+function chemistryCalendarWeekKey(date){
+  if(!date)return null;const d=new Date(date);if(Number.isNaN(d.getTime()))return null;d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));return d.toISOString().slice(0,10)
+}
+function chemistryRowsForPlayerWeek(playerId,season,week,scoring,anchor=null,selectedPoints=null){
+  const games=chemistryScoredGameRows(playerId,season,scoring);if(!games.length)return[];
+  // NBA pick-one-game leagues preserve the selected fantasy score more reliably
+  // than a fantasy-week marker. First identify the actual selected NBA game by
+  // matching Sleeper's historical players_points value, then compare it with
+  // every game the player played in that same Monday-Sunday NBA week.
+  if(Number.isFinite(Number(selectedPoints))){
+    const selected=Number(selectedPoints),matches=games.filter(g=>Math.abs(Number(g.fpts)-selected)<0.051&&g.date);
+    if(matches.length){
+      const expected=anchor?new Date(anchor.getTime()+Math.max(0,Number(week)-1)*7*864e5):null;
+      matches.sort((a,b)=>expected?Math.abs(a.date-expected)-Math.abs(b.date-expected):a.date-b.date);
+      const key=chemistryCalendarWeekKey(matches[0].date),sameWeek=games.filter(g=>chemistryCalendarWeekKey(g.date)===key);
+      if(sameWeek.length)return sameWeek;
+    }
+  }
+  const directRows=games.filter(g=>chemistryDirectWeek(g.row)!==null),pool=directRows.length?directRows.filter(g=>Number(chemistryDirectWeek(g.row))===Number(week)):games.filter(g=>Number(chemistryWeekForGame(g.row,season,anchor))===Number(week));
+  return pool;
 }
 function chemistrySeasonPlayerRows(managerId,season){
   const id=String(managerId),bundle=bundleForSeason(season);if(!bundle)return[];
@@ -1565,7 +1585,7 @@ function chemistrySeasonPlayerRows(managerId,season){
     selectedIds.forEach(pid=>{
       if(!currentIds.has(pid))return;
       const selected=chemistrySelectedPoints(row,pid);if(!Number.isFinite(selected))return;
-      const games=chemistryRowsForPlayerWeek(pid,season,week,scoring,anchor);if(!games.length)return;
+      const games=chemistryRowsForPlayerWeek(pid,season,week,scoring,anchor,selected);if(!games.length)return;
       const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!Number.isFinite(best)||best<=0)return;
       const existing=byPlayer.get(pid)||{id:pid,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};
       existing.captured+=selected;existing.available+=best;existing.starts+=1;existing.seasons.add(String(season));if(Math.abs(selected-best)<0.05)existing.perfect+=1;byPlayer.set(pid,existing);
@@ -2463,7 +2483,7 @@ function managerProfileCoreFingerprint(managerId){
 }
 function managerProfileSessionKey(key){return `imo-profile-v352-session|${key}`}
 function managerProfilePersistentKey(key){return `imo-profile-v352-persistent|${key}`}
-function managerProfileTabPersistentKey(managerId,tab){const isRoster=String(tab)==='roster',chemistry=isRoster?`|chem-${String(state.profileChemistryView||'season')}|cw-${String(state.sportState?.season||'')}-${Number(state.sportState?.week)||0}`:'';return `imo-profile-tab-v354|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}${chemistry}`}
+function managerProfileTabPersistentKey(managerId,tab){const isRoster=String(tab)==='roster',chemistry=isRoster?`|chem-${String(state.profileChemistryView||'season')}|cw-${String(state.sportState?.season||'')}-${Number(state.sportState?.week)||0}`:'';return `imo-profile-tab-v355|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}${chemistry}`}
 function readManagerProfileTabCache(managerId,tab){
   if(String(tab)==='history')return null;
   try{
