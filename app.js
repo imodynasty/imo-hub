@@ -19,7 +19,7 @@ const CANONICAL_DRAFT_COLUMNS={
 function normaliseTeamKey(name){return String(name||"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 function canonicalDraftSlot(season,teamName){return CANONICAL_DRAFT_COLUMNS[String(season)]?.[normaliseTeamKey(teamName)]??null}
 
-const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
+const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,h2hProjections:{},h2hProjectionKey:"",h2hProjectionLoading:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
 const $=id=>document.getElementById(id),WL={"14":"14 days","28":"28 days","season":"2026 season","all":"All time"};
 try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key&&key.startsWith('imo-profile-'))sessionStorage.removeItem(key)}}catch(_){ }
 function resetComputedCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerTrades.clear();state.computedCache.tradeSide.clear();state.computedCache.completedMatchups.clear();state.computedCache.tendencyLeague=null;state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
@@ -847,18 +847,55 @@ function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true){
     <div class="h2h-main-event"><div class="h2h-main-event-player">${h2hKeyPlayerHTML(keyA,mode==='live')}</div><span class="h2h-main-event-vs">VS</span><div class="h2h-main-event-player right">${h2hKeyPlayerHTML(keyB,mode==='live')}</div></div>
     ${includeRecentForm?`<div class="h2h-expanded-form"><span>Recent form</span><div>${esc(managerName(idA))}${h2hFormHTML(formA)}</div><div>${esc(managerName(idB))}${h2hFormHTML(formB)}</div></div>`:''}`
 }
-function sleeperTeamProjection(row){
-  // Sleeper's matchup payload can expose a projected team total under different
-  // keys as their NBA client evolves. Only display a value Sleeper actually
-  // returned; never substitute the IMO betting model and label it as Sleeper.
-  const candidates=[row?.points_projected,row?.projected_points,row?.projection,row?.projected,row?.proj_points,row?.pts_projected];
-  const value=candidates.map(Number).find(v=>Number.isFinite(v)&&v>0);
-  return Number.isFinite(value)?value:null
+function projectionFantasyPoints(row,scoring){
+  if(!row||typeof row!=="object")return null;
+  let total=0,matched=false;
+  Object.entries(scoring||{}).forEach(([key,multiplier])=>{
+    if(key.startsWith("bonus_"))return;
+    const stat=numericValue(row,[key]),mult=Number(multiplier);
+    if(stat!==null&&Number.isFinite(mult)){total+=stat*mult;matched=true}
+  });
+  const pts=numericValue(row,["pts","points"]),reb=numericValue(row,["reb","rebounds"]),ast=numericValue(row,["ast","assists"]),stl=numericValue(row,["stl","steals"]),blk=numericValue(row,["blk","blocks"]);
+  const doubles=[pts,reb,ast,stl,blk].filter(v=>v!==null&&v>=10).length;
+  if(Number(scoring?.bonus_double_double)&&doubles>=2)total+=Number(scoring.bonus_double_double);
+  if(Number(scoring?.bonus_triple_double)&&doubles>=3)total+=Number(scoring.bonus_triple_double);
+  return matched?total:null
+}
+function normalizeSleeperProjectionPayload(payload){
+  const out={};
+  const add=(id,row)=>{if(!id||!row||typeof row!=="object")return;out[String(id)]=row};
+  if(Array.isArray(payload))payload.forEach(row=>add(row?.player_id||row?.player?.player_id||row?.player?.id,row));
+  else if(payload&&typeof payload==="object"){
+    const rows=Array.isArray(payload.data)?payload.data:Array.isArray(payload.projections)?payload.projections:null;
+    if(rows)rows.forEach(row=>add(row?.player_id||row?.player?.player_id||row?.player?.id,row));
+    else Object.entries(payload).forEach(([id,row])=>add(row?.player_id||row?.player?.player_id||id,row));
+  }
+  return out
+}
+async function loadH2HProjections(bundle,week){
+  if(!bundle)return;
+  const season=String(bundle.league?.season||"2026"),key=`${season}:${week}`;
+  if(state.h2hProjectionLoading||state.h2hProjectionKey===key&&Object.keys(state.h2hProjections||{}).length)return;
+  state.h2hProjectionLoading=true;
+  try{
+    const urls=[`https://api.sleeper.com/projections/nba/regular/${encodeURIComponent(season)}/${encodeURIComponent(week)}`,`https://api.sleeper.app/v1/projections/nba/regular/${encodeURIComponent(season)}/${encodeURIComponent(week)}`];
+    let payload=null;
+    for(const url of urls){try{const r=await fetch(url,{cache:"no-store"});if(r.ok){payload=await r.json();if(payload)break}}catch(_){}}
+    state.h2hProjections=normalizeSleeperProjectionPayload(payload);state.h2hProjectionKey=key;
+  }catch(error){console.warn("Sleeper NBA projections unavailable:",error);state.h2hProjections={};state.h2hProjectionKey=key}
+  finally{state.h2hProjectionLoading=false}
+}
+function sleeperTeamProjection(row,bundle,week){
+  const projections=state.h2hProjections||{},scoring=bundle?.league?.scoring_settings||{};
+  const ids=safeArray(row?.starters).map(String).filter(id=>id&&id!=="0");
+  const playerIds=ids.length?ids:safeArray(row?.players).map(String).filter(id=>id&&id!=="0");
+  const values=playerIds.map(id=>projectionFantasyPoints(projections[id],scoring)).filter(Number.isFinite);
+  return values.length?values.reduce((a,b)=>a+b,0):null
 }
 function buildHeadToHeadMatchup(group,bundle,week,mode){
   const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||'');
   const currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0,preA=managerPreGameProjection(idA,bundle,week),preB=managerPreGameProjection(idB,bundle,week),finishA=mode==='live'?liveWeightedProjection(currentA,preA):preA,finishB=mode==='live'?liveWeightedProjection(currentB,preB):preB,odds=matchupOdds(finishA,finishB),difference=Math.abs(finishA-finishB),line=Math.floor(difference)+.5,favouriteA=finishA>=finishB;
-  return{rowA,rowB,idA,idB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA),sleeperProjectionB:sleeperTeamProjection(rowB),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
+  return{rowA,rowB,idA,idB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA,bundle,week),sleeperProjectionB:sleeperTeamProjection(rowB,bundle,week),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>SLEEPER PROJ.</small><b>${value.toFixed(1)}</b></span>`:''}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection){
@@ -871,6 +908,7 @@ function renderHeadToHead(){
   const target=$("headToHead");if(!target)return;
   const bundle=currentLeagueBundle();if(!bundle){target.classList.remove('loading');target.innerHTML='<div class="block-empty">Current league data unavailable.</div>';return}
   const week=resolveHeadToHeadWeek(bundle),groups=groupedMatchupsForWeek(bundle,week);
+  if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
   const anyScore=groups.some(group=>group.some(row=>Number(row.points)>0)),mode=anyScore?'live':'upcoming';
   const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Live`:`Week ${week} · Upcoming`;status.classList.toggle('live',mode==='live')}
@@ -883,7 +921,7 @@ function renderHeadToHead(){
       ${h2hMatchupDetailsHTML(featured,mode)}
     </article>
     ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details class="h2h-compact-matchup ${mode}"><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">IMO odds are independent from Sleeper projections, include a 5% house margin and update from the latest live matchup score. Sleeper projections are shown only when Sleeper supplies a projected team total for that matchup.</p>`
+    <p class="h2h-method-note">IMO odds are independent from Sleeper projections, include a 5% house margin and update from the latest live matchup score. Sleeper projections use Sleeper player projections scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
@@ -893,7 +931,7 @@ async function refreshHeadToHeadData(){
     if(league){bundle.league=league;state.league=league}if(sportState)state.sportState=sportState;
     const week=resolveHeadToHeadWeek(bundle),rows=await getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}/matchups/${week}`,true);
     if(Array.isArray(rows)){bundle.matchups=(bundle.matchups||[]).filter(x=>Number(x.week)!==Number(week));bundle.matchups.push(...rows.map(x=>({...x,week})))}
-    renderHeadToHead()
+    state.h2hProjectionKey="";await loadH2HProjections(bundle,week);renderHeadToHead()
   }catch(error){console.warn('Head to head live refresh unavailable:',error)}
   finally{state.h2hRefreshBusy=false}
 }
@@ -2305,9 +2343,9 @@ function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
   return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
 }
-function managerProfileSessionKey(key){return `imo-profile-v3377-session|${key}`}
-function managerProfilePersistentKey(key){return `imo-profile-v3377-persistent|${key}`}
-function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v3377|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
+function managerProfileSessionKey(key){return `imo-profile-v349-session|${key}`}
+function managerProfilePersistentKey(key){return `imo-profile-v349-persistent|${key}`}
+function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v349|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
 function readManagerProfileTabCache(managerId,tab){
   try{
     const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;

@@ -2491,3 +2491,36 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 .h2h-featured-team.right>.h2h-sleeper-projection{grid-column:1;justify-self:end}.h2h-featured-team.left>.h2h-sleeper-projection{grid-column:2;justify-self:start}
 .h2h-featured-team>.h2h-form-badges{grid-row:auto}.h2h-compact-team>.h2h-sleeper-projection{grid-column:2/4;margin-top:-1px}.h2h-compact-team>.h2h-form-badges{margin-top:0}
 @media(max-width:620px){.h2h-sleeper-projection{gap:4px;padding:3px 5px}.h2h-sleeper-projection small{font-size:6px}.h2h-sleeper-projection b{font-size:11px}}
+
+/* =========================================================
+   V3.4.8 — TROPHY CABINET DESKTOP LAYOUT HARDENING
+   ========================================================= */
+@media (min-width:761px){
+  .profile-trophy-card{width:100%;max-width:none;overflow:visible!important}
+  .profile-trophy-card .manager-profile-card-heading{margin-bottom:14px}
+  .trophy-room{width:100%;box-sizing:border-box;padding:22px 26px 24px;border-radius:20px;background:radial-gradient(ellipse at 50% -8%,rgba(255,46,76,.15),transparent 35%),linear-gradient(180deg,#0d1118 0%,#090d13 62%,#05070a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 0 0 100px rgba(0,0,0,.55),0 20px 55px rgba(0,0,0,.3)}
+  .trophy-room__header{height:20px;margin:-5px 34px 12px}
+  .trophy-room__light{width:min(620px,58%);height:3px}
+  .trophy-room__glass{width:100%;box-sizing:border-box;padding:18px 22px 12px;overflow:visible}
+  .trophy-shelf-row{grid-template-columns:repeat(5,minmax(145px,1fr));gap:18px;min-height:250px;padding:14px 18px 42px;margin-bottom:18px}
+  .trophy-shelf-row:after{bottom:17px;height:22px}
+  .trophy-shelf-row:before{bottom:39px}
+  .physical-award{min-width:0;align-self:end}
+  .physical-award__object{width:142px;height:180px}
+  .physical-award svg{width:136px;height:158px}
+  .award-base{left:21px;right:21px;height:42px}
+  .award-engraving{height:25px;font-size:11px}
+  .physical-award__label{max-width:155px;min-height:30px;margin-top:10px;font-size:10px;line-height:1.3}
+  .physical-award__popover{width:280px;padding:14px 15px}
+  .physical-award__popover strong{font-size:14px}
+  .physical-award__popover p{font-size:11px}
+  .trophy-room__plaque{margin-top:15px;padding:8px 24px}
+  .trophy-room__plaque b{font-size:10px}.trophy-room__plaque span{font-size:8px}
+}
+@media (min-width:761px) and (max-width:1180px){
+  .trophy-shelf-row{grid-template-columns:repeat(4,minmax(125px,1fr));gap:12px}
+  .physical-award__object{width:124px;height:165px}.physical-award svg{width:120px;height:145px}
+}
+@media (min-width:1500px){
+  .trophy-shelf-row{grid-template-columns:repeat(6,minmax(145px,1fr))}
+}
