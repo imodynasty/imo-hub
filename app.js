@@ -897,7 +897,7 @@ function buildHeadToHeadMatchup(group,bundle,week,mode){
   const currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0,preA=managerPreGameProjection(idA,bundle,week),preB=managerPreGameProjection(idB,bundle,week),finishA=mode==='live'?liveWeightedProjection(currentA,preA):preA,finishB=mode==='live'?liveWeightedProjection(currentB,preB):preB,odds=matchupOdds(finishA,finishB),difference=Math.abs(finishA-finishB),line=Math.floor(difference)+.5,favouriteA=finishA>=finishB;
   return{rowA,rowB,idA,idB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA,bundle,week),sleeperProjectionB:sleeperTeamProjection(rowB,bundle,week),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
-function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>SLEEPER PROJ.</small><b>${value.toFixed(1)}</b></span>`:''}
+function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTION</small><b>${value.toFixed(1)}</b></span>`:''}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection){
   return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button><strong>$${odds.toFixed(2)}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
@@ -921,7 +921,7 @@ function renderHeadToHead(){
       ${h2hMatchupDetailsHTML(featured,mode)}
     </article>
     ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details class="h2h-compact-matchup ${mode}"><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">IMO odds are independent from Sleeper projections, include a 5% house margin and update from the latest live matchup score. Sleeper projections use Sleeper player projections scored with IMO league settings and total the active starters for that matchup.</p>`
+    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
@@ -2343,10 +2343,11 @@ function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
   return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
 }
-function managerProfileSessionKey(key){return `imo-profile-v349-session|${key}`}
-function managerProfilePersistentKey(key){return `imo-profile-v349-persistent|${key}`}
-function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v349|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
+function managerProfileSessionKey(key){return `imo-profile-v350-session|${key}`}
+function managerProfilePersistentKey(key){return `imo-profile-v350-persistent|${key}`}
+function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v350|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
 function readManagerProfileTabCache(managerId,tab){
+  if(String(tab)==='history')return null;
   try{
     const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;
     const entry=JSON.parse(raw),expected=managerProfileCoreFingerprint(managerId);
@@ -2355,7 +2356,7 @@ function readManagerProfileTabCache(managerId,tab){
   }catch(_){return null}
 }
 function writeManagerProfileTabCache(managerId,tab,html){
-  if(!html)return;
+  if(String(tab)==='history'||!html)return;
   try{localStorage.setItem(managerProfileTabPersistentKey(managerId,tab),JSON.stringify({html,savedAt:Date.now(),fingerprint:managerProfileCoreFingerprint(managerId)}))}catch(_){ }
 }
 function cacheManagerProfileTabsFromHTML(managerId,html){
