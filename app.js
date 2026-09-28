@@ -1598,6 +1598,47 @@ function managerTeamChemistryRows(managerId,view=state.profileChemistryView){
   seasons.forEach(season=>chemistrySeasonPlayerRows(id,season).forEach(row=>{const x=merged.get(row.id)||{id:row.id,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};x.captured+=row.captured;x.available+=row.available;x.starts+=row.starts;x.perfect+=row.perfect;row.seasons.forEach(y=>x.seasons.add(y));merged.set(row.id,x)}));
   return [...merged.values()].map(x=>({...x,chemistry:x.available>0?Math.max(0,Math.min(100,x.captured/x.available*100)):0})).filter(x=>x.starts>0).sort((a,b)=>b.chemistry-a.chemistry||b.starts-a.starts||playerName(a.id).localeCompare(playerName(b.id)));
 }
+async function runSleeperLukaProbe(button){
+  const box=button?.closest('.chemistry-player-probe'),out=box?.querySelector('[data-sleeper-probe-output]');if(!out)return;
+  button.disabled=true;out.textContent='Running Sleeper-only player ID probe for Luka Dončić (1747)…';
+  const pid='1747',season='2025';
+  const urls=[
+    ['PLAYER · GROUPING=WEEK',`${CONFIG.statsApi}/${pid}?season_type=regular&season=${season}&grouping=week`],
+    ['PLAYER · GROUPING=GAME',`${CONFIG.statsApi}/${pid}?season_type=regular&season=${season}&grouping=game`],
+    ['PLAYER · SEASON',`${CONFIG.statsApi}/${pid}?season_type=regular&season=${season}`],
+    ['SEASON LIST · PLAYER FILTER',`https://api.sleeper.com/stats/nba/${season}?season_type=regular&player_id=${pid}`],
+    ['SEASON LIST · WEEK 5',`https://api.sleeper.com/stats/nba/${season}?season_type=regular&week=5`],
+    ['PROJECTIONS/STATS PLAYER',`https://api.sleeper.com/projections/nba/player/${pid}?season_type=regular&season=${season}&grouping=week`]
+  ];
+  const summarize=(payload)=>{
+    const type=Array.isArray(payload)?'array':payload===null?'null':typeof payload;
+    const keys=payload&&typeof payload==='object'&&!Array.isArray(payload)?Object.keys(payload):[];
+    const rows=gameLogRows(payload);
+    const direct=Array.isArray(payload)?payload:[];
+    const candidates=(rows.length?rows:direct).filter(r=>{
+      const rp=String(r?.player_id??r?.player?.player_id??r?.player?.id??'');
+      const wk=Number(r?.week??r?.fantasy_week??r?.week_num??r?.stats?.week);
+      return (!rp||rp===pid)&&(!Number.isFinite(wk)||wk===5)
+    }).slice(0,6);
+    return {type,keys:keys.slice(0,20),rows:rows.length,arrayLength:direct.length,candidates};
+  };
+  const results=[];
+  for(const [label,url] of urls){
+    try{
+      const r=await fetch(url,{cache:'no-store'}),text=await r.text();let payload=null;try{payload=text?JSON.parse(text):null}catch{}
+      results.push({label,url,status:r.status,ok:r.ok,bytes:text.length,summary:summarize(payload),raw:text.slice(0,1600)});
+    }catch(error){results.push({label,url,status:'FETCH ERROR',error:String(error?.message||error)})}
+  }
+  out.textContent=results.map(x=>{
+    const head=`${x.label}\nHTTP ${x.status}${x.bytes!==undefined?` · ${x.bytes} bytes`:''}\n${x.url}`;
+    if(x.error)return `${head}\nERROR: ${x.error}`;
+    const sm=x.summary||{};return `${head}\nTYPE: ${sm.type} · ROWS: ${sm.rows} · ARRAY: ${sm.arrayLength}\nKEYS: ${(sm.keys||[]).join(', ')||'—'}\nWEEK 5 / PLAYER CANDIDATES:\n${JSON.stringify(sm.candidates||[],null,2)}\nRAW PREVIEW:\n${x.raw||'—'}`;
+  }).join('\n\n==============================\n\n');
+  button.disabled=false;
+}
+function sleeperLukaProbeHTML(){
+  return `<div class="chemistry-player-probe"><strong>SLEEPER PLAYER-ID PROBE</strong><small>100% Sleeper. Tests Luka Dončić (player 1747) against player/week/game endpoint shapes and prints the raw response.</small><button type="button" data-run-sleeper-luka-probe>RUN LUKA 1747 PROBE</button><pre data-sleeper-probe-output>Not run yet.</pre></div>`;
+}
 function chemistryDiagnosticHTML(managerId){
   const id=String(managerId),currentIds=new Set(safeArray(state.managers.get(id)?.roster?.players).map(String));
   const targetSeasons=['2024','2025'];
@@ -1617,7 +1658,7 @@ function chemistryDiagnosticHTML(managerId){
   // Luka's Sleeper player id so this also diagnoses manager/roster mapping.
   const b25=bundleForSeason('2025');let lukaProbe='Historical 2025 bundle not loaded';
   if(b25){const owned=safeArray(b25.matchups).filter(r=>String(b25.ownerByRoster?.[String(r.roster_id)]||'')===id&&Number(r.week)===5);let found=null;for(const r of owned){for(const [pid,v] of Object.entries(r?.players_points||{})){if(Math.abs(Number(v)-35.5)<0.011){found={pid:String(pid),score:Number(v)};break}}if(found)break}lukaProbe=found?`PASS — Week 5 selected score 35.50 found (player ${found.pid})`:`FAIL — 35.50 not found in this manager's Week 5 players_points (${owned.length} roster row${owned.length===1?'':'s'})`}
-  return `<div class="chemistry-debug"><strong>CHEMISTRY DIAGNOSTIC</strong><small>This appears only while All-Time has no results. Send a screenshot of this box back to ChatGPT.</small>${lines.map(x=>`<div><b>${esc(x.season==='2024'?'2024/25':'2025/26')} · ${esc(x.status)}</b><span>${esc(x.detail)}</span></div>`).join('')}<div><b>LUKA TEST</b><span>${esc(lukaProbe)}</span></div></div>`;
+  return `<div class="chemistry-debug"><strong>CHEMISTRY DIAGNOSTIC</strong><small>This appears only while All-Time has no results. Send a screenshot of this box back to ChatGPT.</small>${lines.map(x=>`<div><b>${esc(x.season==='2024'?'2024/25':'2025/26')} · ${esc(x.status)}</b><span>${esc(x.detail)}</span></div>`).join('')}<div><b>LUKA TEST</b><span>${esc(lukaProbe)}</span></div>${sleeperLukaProbeHTML()}</div>`;
 }
 function teamChemistryHTML(managerId){
   const id=String(managerId),view=state.profileChemistryView==='all'?'all':'season',rows=managerTeamChemistryRows(id,view),teamCaptured=rows.reduce((s,x)=>s+x.captured,0),teamAvailable=rows.reduce((s,x)=>s+x.available,0),teamPct=teamAvailable>0?teamCaptured/teamAvailable*100:null;
@@ -3815,6 +3856,7 @@ document.addEventListener("click",e=>{
   if(e.target.closest("[data-close-manager-directory]")||e.target.closest("#managerDirectoryClose")){closeManagerDirectory();return}
   const ledgerToggle=e.target.closest('[data-manager-ledger-toggle]');if(ledgerToggle){const column=ledgerToggle.closest('.manager-ledger-column'),extras=column?Array.from(column.querySelectorAll('.manager-ledger-item-wrap.is-extra')):[];if(column&&extras.length){const expanded=column.classList.toggle('expanded');ledgerToggle.setAttribute('aria-expanded',expanded?'true':'false');ledgerToggle.textContent=managerTradeLedgerToggleLabel(extras.length,expanded)}return}
   const managerTabBtn=e.target.closest('[data-manager-tab]');if(managerTabBtn){const tab=managerTabBtn.dataset.managerTab,id=$('managerProfileModal')?.dataset.managerId;if(id&&tab!=='overview'&&!$('managerProfileContent')?.querySelector(`[data-manager-tab-panel="${tab}"]`)){ensureManagerFullProfileForTab(id,tab);return}setManagerProfileTab(tab,true);return}
+  const sleeperProbeBtn=e.target.closest('[data-run-sleeper-luka-probe]');if(sleeperProbeBtn){runSleeperLukaProbe(sleeperProbeBtn);return}
   const chemistryBtn=e.target.closest('[data-chemistry-view]');if(chemistryBtn){
     const view=chemistryBtn.dataset.chemistryView==='all'?'all':'season';if(view===state.profileChemistryView)return;state.profileChemistryView=view;
     const id=$("managerProfileModal")?.dataset.managerId,content=$("managerProfileContent");if(id&&content){const panels=content.querySelector('.manager-profile-tab-panels'),oldPanel=panels?.querySelector('[data-manager-tab-panel="roster"]');if(oldPanel)oldPanel.remove();const notice=document.createElement('div');notice.className='manager-profile-on-demand-loading';notice.innerHTML=`<strong>${view==='all'?'Building all-time chemistry…':'Loading this season’s chemistry…'}</strong><small>${view==='all'?'Checking every loaded IMO season for current-roster starters.':'Comparing selected games with each player’s best weekly game.'}</small>`;content.appendChild(notice);buildManagerProfileTab(id,'roster').then(panelHtml=>{if($("managerProfileModal")?.dataset.managerId!==String(id))return;notice.remove();const targetPanels=content.querySelector('.manager-profile-tab-panels');if(targetPanels&&!targetPanels.querySelector('[data-manager-tab-panel="roster"]'))targetPanels.insertAdjacentHTML('beforeend',panelHtml);bindSparklineTooltips(content);setManagerProfileTab('roster',false)}).catch(error=>{notice.remove();console.warn('Team Chemistry hydration failed:',error)})}return
