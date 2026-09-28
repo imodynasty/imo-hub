@@ -1574,13 +1574,12 @@ function chemistrySeasonPlayerRows(managerId,season){
   safeArray(bundle.matchups).forEach(row=>{
     const owner=String(bundle.ownerByRoster?.[String(row.roster_id)]||'');if(owner!==id)return;
     const week=Number(row.week)||0;if(!week||(isLiveSeason&&sportWeek>0&&week>=sportWeek))return;
-    // Historical Sleeper NBA payloads are not completely consistent about
-    // preserving `starters`. `players_points` is the authoritative record of
-    // the players whose scoring selection was recorded for that matchup, so
-    // use both sources. This is especially important for 2024/25 and 2025/26.
-    const starterIds=safeArray(row.starters).map(String).filter(Boolean);
-    const scoredIds=Object.keys(row?.players_points||{}).map(String).filter(Boolean);
-    const selectedIds=[...new Set([...starterIds,...scoredIds])];
+    // A Chemistry start must be an actual lineup start. Sleeper's
+    // `players_points` contains scoring entries for rostered/eligible players
+    // beyond the submitted starting lineup, so it must never create starts.
+    // `starters` is the authoritative inclusion list; `players_points` is used
+    // only to recover the selected score for a player already in `starters`.
+    const selectedIds=[...new Set(safeArray(row.starters).map(String).filter(Boolean))];
     if(!selectedIds.length)return;
     selectedIds.forEach(pid=>{
       if(!currentIds.has(pid))return;
@@ -1606,8 +1605,8 @@ function chemistryDiagnosticHTML(managerId){
     const bundle=bundleForSeason(season);
     if(!bundle){lines.push({season,status:'FAIL',detail:'Historical league bundle not loaded'});continue}
     const ownedRows=safeArray(bundle.matchups).filter(row=>String(bundle.ownerByRoster?.[String(row.roster_id)]||'')===id);
-    const selectedRows=ownedRows.filter(row=>Object.keys(row?.players_points||{}).some(pid=>currentIds.has(String(pid)))||safeArray(row?.starters).some(pid=>currentIds.has(String(pid))));
-    const selectedPairs=[];selectedRows.forEach(row=>{const ids=[...new Set([...safeArray(row?.starters).map(String),...Object.keys(row?.players_points||{}).map(String)])];ids.forEach(pid=>{if(!currentIds.has(pid))return;const pts=chemistrySelectedPoints(row,pid);if(Number.isFinite(pts))selectedPairs.push({pid,week:Number(row.week)||0,pts})})});
+    const selectedRows=ownedRows.filter(row=>safeArray(row?.starters).some(pid=>currentIds.has(String(pid))));
+    const selectedPairs=[];selectedRows.forEach(row=>{const ids=[...new Set(safeArray(row?.starters).map(String))];ids.forEach(pid=>{if(!currentIds.has(pid))return;const pts=chemistrySelectedPoints(row,pid);if(Number.isFinite(pts))selectedPairs.push({pid,week:Number(row.week)||0,pts})})});
     const logPlayers=[...new Set(selectedPairs.map(x=>x.pid))].filter(pid=>safeArray(state.gameLogs?.[season]?.[pid]).length);
     const calculable=chemistrySeasonPlayerRows(id,season);
     lines.push({season,status:calculable.length?'OK':'FAIL',detail:`${ownedRows.length} matchup rows · ${selectedPairs.length} current-roster selections · ${logPlayers.length} players with Sleeper weekly game logs · ${calculable.length} chemistry rows`});
