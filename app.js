@@ -1,5 +1,5 @@
 /* IMO DYNASTY V3.3.80 — Immediate Ticker Motion */
-const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
+const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51};
 
 // Completed-draft column ownership is the source of truth for converting a
 // traded historical pick into the player it became. Sleeper's drafter/current
@@ -170,7 +170,7 @@ function latestKnownAverage(playerId){for(const bundle of [...state.bundles].sor
 function playerSeasonAverage(playerId,season){const bundle=bundleForSeason(season);if(!bundle)return 0;const weeks=meaningfulWeeks(bundle);return weeks.length?Number(buildPlayerAverages(bundle,weeks.at(-1))[playerId]||0):0}
 function tradeSeasonAverage(playerId,t){const bundle=bundleForTrade(t);if(bundle){const weeks=meaningfulWeeks(bundle);if(weeks.length){const avg=Number(buildPlayerAverages(bundle,weeks.at(-1))[playerId]||0);if(avg>0)return avg}}return latestKnownAverage(playerId)}
 function playerAgeAt(playerId,timestamp){const p=state.players[playerId]||{},at=new Date(Number(timestamp)||Date.now()),raw=p.birth_date||p.birthdate||p.dob;if(raw){const born=new Date(raw);if(!Number.isNaN(born.getTime())){let age=at.getFullYear()-born.getFullYear();if(at.getMonth()<born.getMonth()||(at.getMonth()===born.getMonth()&&at.getDate()<born.getDate()))age--;return Math.max(18,age)}}const currentAge=Number(p.age);if(Number.isFinite(currentAge))return Math.max(18,currentAge-(new Date().getFullYear()-at.getFullYear()));return 28}
-function ageMultiplier(age){if(age<=19)return 1.40;if(age===20)return 1.35;if(age===21)return 1.33;if(age===22)return 1.31;if(age===23)return 1.30;if(age===24)return 1.28;if(age===25)return 1.25;if(age===26)return 1.24;if(age===27)return 1.22;if(age===28)return 1.18;if(age===29)return 1.12;if(age===30)return 1.05;if(age===31)return .98;if(age===32)return .92;if(age===33)return .88;if(age===34)return .84;if(age===35)return .80;return .76}
+function ageMultiplier(age){if(age<=19)return 1.18;if(age===20)return 1.20;if(age===21)return 1.22;if(age===22)return 1.23;if(age===23)return 1.24;if(age===24||age===25)return 1.25;if(age===26)return 1.24;if(age===27)return 1.22;if(age===28)return 1.18;if(age===29)return 1.12;if(age===30)return 1.05;if(age===31)return .98;if(age===32)return .92;if(age===33)return .88;if(age===34)return .84;if(age===35)return .80;return .76}
 function eliteMultiplier(avg){if(avg>=40)return 1.40;if(avg>=35)return 1.28;if(avg>=30)return 1.18;if(avg>=25)return 1.10;if(avg>=20)return 1.05;if(avg>=10)return 1.02;return 1}
 function playerDynastyValue(playerId,average,timestamp){const avg=Number(average)||0;return avg>0?avg*ageMultiplier(playerAgeAt(playerId,timestamp))*eliteMultiplier(avg):0}
 function topTenSeasonAverageIds(t){
@@ -293,17 +293,12 @@ function tradeSideMetrics(t,managerId){
   return result
 }
 function packageGradePoints(edge,net){
-  // V3.3.83: normal dynasty trades should generally live in the C-to-A+ range.
-  // D territory is now reserved for clearly lopsided outcomes rather than ordinary
-  // preference/fit disagreements. F/Fleece remain governed separately below.
-  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-14?5:edge>=-30?4:3;
+  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-9?5:edge>=-19?4:edge>=-31?3:2;
   // Small-value trades cannot produce sensational grades solely from percentage swings.
   if(points>=9&&net<12)points=net>=8?8:net>=4?7:6;
   if(points===8&&net<7)points=net>=4?7:net>=2?6:5;
   if(points===7&&net<3)points=6;
-  // A harsh percentage gap on a relatively small absolute loss should still be D+
-  // rather than a full D. Full D now needs both a sizeable relative and real-value loss.
-  if(points===3&&net>-22)points=4;
+  if(points<=2&&net>-18)points=3;
   return points
 }
 function gradeFromPoints(points,m){
@@ -973,119 +968,6 @@ function renderBiggestTrades(){
   try{const limit=state.biggestTradesExpanded?10:5,rows=safeArray(state.trades).filter(Boolean).map(raw=>({t:normaliseTrade(raw),value:safeTradeValue(raw)})).sort((a,b)=>b.value-a.value||(Number(b.t?.created)||0)-(Number(a.t?.created)||0)).slice(0,limit);root.innerHTML=rows.length?rows.map((row,i)=>{let details='';try{details=tradeDetailsHTML(row.t)}catch(error){console.warn('Ranked trade details recovered',row.t?.transaction_id||row.t?.created,error);details='<div class="block-empty">This trade has partial data, but available transaction information is still shown.</div>'}const names=mids(row.t).map(id=>managerName(id,row.t)).filter(Boolean);return `<details class="big-trade-card"><summary><span class="big-trade-rank">${i+1}</span><div><strong>${names.map(esc).join(' ↔ ')||'League trade'}</strong><small>${fmt(row.t.created)} · ${esc(row.t.season_label||'')}</small></div><span class="big-trade-chevron">View trade</span></summary><div class="trade-detail-body">${details}</div></details>`}).join(''):'<div class="block-empty">No completed trades available.</div>';if(toggle)toggle.textContent=state.biggestTradesExpanded?'Show top 5':'Show top 10'}
   catch(error){console.error('Biggest Trades render failed',error);root.innerHTML='<div class="block-empty">Biggest trade rankings are temporarily unavailable.</div>'}
   finally{root.classList.remove('loading')}
-}
-function currentVoteAverageMap(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&meaningfulWeeks(current).length)return buildPlayerAverages(current,meaningfulWeeks(current).at(-1));return state.playerAverages}
-function previousSeasonAverageMap(){const sorted=state.bundles.filter(b=>meaningfulWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season));const previous=sorted.find(b=>b!==state.modelBundle)||sorted[1];return previous?buildPlayerAverages(previous,meaningfulWeeks(previous).at(-1)):{} }
-
-function eligibleRookie(id){
-  const p=state.players[id]||{},season=String(state.league?.season||"2026");
-  return Number(p.years_exp)===0||
-    String(p.rookie_year||p.first_season||"")===season||
-    String(p.status||"").toLowerCase()==="rookie"
-}
-function votingOpen(){const now=Date.now();return now>=new Date(CONFIG.votingOpens).getTime()&&now<new Date(CONFIG.votingCloses).getTime()}
-function votingPhase(){const now=Date.now(),opens=new Date(CONFIG.votingOpens).getTime(),closes=new Date(CONFIG.votingCloses).getTime(),announce=new Date(CONFIG.awardsAnnounced).getTime();return now<opens?'pre':now<closes?'open':now<announce?'closed':'announced'}
-function votingCountdownText(){const phase=votingPhase(),target=phase==='pre'?new Date(CONFIG.votingOpens).getTime():phase==='open'?new Date(CONFIG.votingCloses).getTime():phase==='closed'?new Date(CONFIG.awardsAnnounced).getTime():0;if(phase==='announced')return 'Winners announced 1 March';const remaining=Math.max(0,target-Date.now()),days=Math.floor(remaining/864e5),hours=Math.floor((remaining%864e5)/36e5),minutes=Math.floor((remaining%36e5)/6e4),seconds=Math.floor((remaining%6e4)/1000);const lead=phase==='pre'?'Voting opens':phase==='open'?'Voting closes':'Winners announced';return `${lead} in ${days}d ${hours}h ${minutes}m ${seconds}s`}
-function categoryKey(category){return `imoVoteSubmitted:${category}:2027`}
-function categorySubmitted(category){return Boolean(localStorage.getItem(categoryKey(category)))}
-function lockCategory(category,message){
-  const card=document.querySelector(`.vote-category[data-category="${category}"]`);
-  const overlay=$(`${category}Lock`);
-  if(!card||!overlay)return;
-  card.classList.add("vote-locked");
-  overlay.innerHTML=`<div><strong>🔒 ${esc(message)}</strong></div>`;
-  card.querySelectorAll("input,select,button").forEach(el=>el.disabled=true)
-}
-function unlockCategory(category){
-  const card=document.querySelector(`.vote-category[data-category="${category}"]`);
-  const overlay=$(`${category}Lock`);
-  if(!card||!overlay)return;
-  card.classList.remove("vote-locked");
-  overlay.innerHTML="";
-  card.querySelectorAll("input,select,button").forEach(el=>el.disabled=false)
-}
-function applyVotingLocks(){
-  const open=votingOpen(),phase=votingPhase(),countdown=votingCountdownText();
-  $("votingCountdown").textContent=countdown;
-  ["allNba","rookie","mip"].forEach(category=>{
-    const status=$(category==="allNba"?"allNbaStatus":category==="rookie"?"rookieStatus":"mipStatus");
-    if(categorySubmitted(category)){
-      lockCategory(category,"Vote submitted");
-      if(status)status.textContent="Your vote has been locked on this device."
-    }else if(!open){
-      const message=phase==='pre'?'Voting opens 23 February':phase==='closed'?'Voting closed — winners announced 1 March':'Winners announced 1 March';
-      lockCategory(category,message);
-      if(status)status.textContent=countdown
-    }else{
-      unlockCategory(category);
-      if(status)status.textContent="Voting closes 28 February. One submission allowed on this device."
-    }
-  })
-}
-function storeVote(category,payload){
-  if(!votingOpen())return false;
-  if(categorySubmitted(category))return false;
-  localStorage.setItem(categoryKey(category),JSON.stringify({...payload,submittedAt:new Date().toISOString()}));
-  applyVotingLocks();
-  return true
-}
-function renderVoting(){
-  const avgs=currentVoteAverageMap(),prev=previousSeasonAverageMap();
-  state.previousPlayerAverages=prev;
-  const allPlayers=Object.entries(avgs)
-    .filter(([,v])=>Number(v)>0)
-    .map(([id,avg])=>({id,avg:Number(avg),name:playerName(id)}))
-    .sort((a,b)=>b.avg-a.avg||a.name.localeCompare(b.name));
-  const top=allPlayers.slice(0,50);
-  state.votePlayers=top;
-  const chosen=new Set();
-
-  $("allNbaChoices").classList.remove("loading");
-  const draw=(query="")=>{
-    $("allNbaChoices").innerHTML=top
-      .filter(x=>x.name.toLowerCase().includes(query.toLowerCase()))
-      .map(x=>`<label class="vote-option"><input type="checkbox" value="${x.id}" ${chosen.has(x.id)?"checked":""}><span>${esc(x.name)}</span><small>${x.avg.toFixed(1)}</small></label>`)
-      .join("")
-  };
-  draw();
-  $("allNbaCount").textContent=chosen.size;
-  $("allNbaSearch").oninput=e=>draw(e.target.value);
-  $("allNbaChoices").onchange=e=>{
-    if(!e.target.matches("input"))return;
-    if(e.target.checked&&chosen.size>=10){e.target.checked=false;return}
-    e.target.checked?chosen.add(e.target.value):chosen.delete(e.target.value);
-    $("allNbaCount").textContent=chosen.size
-  };
-
-  const rookies=allPlayers.filter(x=>eligibleRookie(x.id));
-  $("rookieVote").innerHTML='<option value="">Select a rookie…</option>'+
-    rookies.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.avg.toFixed(1)}</option>`).join("");
-
-  const mip=allPlayers
-    .filter(x=>Number(prev[x.id])>0)
-    .map(x=>({...x,improvement:x.avg-Number(prev[x.id])}))
-    .sort((a,b)=>b.improvement-a.improvement||b.avg-a.avg);
-  $("mipVote").innerHTML='<option value="">Select a player…</option>'+
-    mip.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.improvement>=0?"+":""}${x.improvement.toFixed(1)} PPG</option>`).join("");
-
-  $("submitAllNba").onclick=()=>{
-    if(chosen.size===0||chosen.size>10){$("allNbaStatus").textContent="Select between 1 and 10 players.";return}
-    if(storeVote("allNba",{players:[...chosen],fanWeight:.35,averageWeight:.65,normalisationPool:"top50"}))$("allNbaStatus").textContent="All-NBA vote submitted."
-  };
-  $("submitRookie").onclick=()=>{
-    const player=$("rookieVote").value;
-    if(!player){$("rookieStatus").textContent="Select one rookie.";return}
-    if(storeVote("rookie",{player,fanWeight:.35,averageWeight:.65}))$("rookieStatus").textContent="ROTY vote submitted."
-  };
-  $("submitMip").onclick=()=>{
-    const player=$("mipVote").value;
-    if(!player){$("mipStatus").textContent="Select one player.";return}
-    if(storeVote("mip",{player,fanWeight:.50,improvementWeight:.50,baselineSeason:"2025",currentSeason:"2026"}))$("mipStatus").textContent="MIP vote submitted."
-  };
-
-  applyVotingLocks();
-  clearInterval(window.__imoVotingTimer);
-  window.__imoVotingTimer=setInterval(applyVotingLocks,1000)
 }
 
 function managerTrades(managerId){
@@ -1965,7 +1847,7 @@ function managerProfileOverviewPanelHTML(managerId){
   const id=String(managerId),manager=state.managers.get(id);if(!manager)return '<section class="manager-profile-tab-panel active" data-manager-tab-panel="overview"><div class="profile-empty">Manager profile unavailable.</div></section>';
   const weeks=meaningfulWeeks(state.modelBundle),through=weeks.at(-1)||Infinity,power=modelRows(state.modelBundle,through,"power").find(x=>x.id===id),odds=priceRows(through).find(x=>x.id===id),form=managerFormData(id),trades=managerTrades(id),avgAge=managerAverageAge(id),matchups=managerRecentMatchups(id),gm=managerGMProfile(id),powerMovement=managerPowerMovement(id);
   const formPills=matchups.map(g=>`<details class="profile-form-result"><summary class="profile-form-pill ${g.result==="W"?"win":g.result==="D"?"draw":"loss"}">${g.result}</summary><div>${esc(manager.name)} <b>${g.result}</b> ${g.myPts.toFixed(2)} v ${esc(managerName(g.oppId))} ${g.oppPts.toFixed(2)}<small>Week ${g.week}</small></div></details>`).join("")||'<span class="profile-muted">No completed games</span>';
-  const statGrid=`<div class="manager-profile-stat-grid"><div><span>Power rank</span><strong class="power-rank-with-move">${power?`#${power.rank}`:"—"}${power&&powerMovement.move?` <em class="rank-move ${powerMovement.move>0?'up':'down'}">${powerMovement.move>0?'↑':'↓'}${Math.abs(powerMovement.move)}</em>`:""}</strong></div><div><span>Ladder</span><strong>${power?`#${power.standingRank}`:"—"}</strong></div><div><span>Record</span><strong>${form.games?`${form.wins}-${form.games-form.wins}`:"—"}</strong></div><div><span>Championship odds</span><strong>${odds?championshipOddsLabel(odds):"—"}</strong></div><div><span>Team average age</span><strong>${avgAge?avgAge.toFixed(1):"—"}</strong></div><div><span>Career trades</span><strong>${trades.length}</strong></div></div>`;
+  const statGrid=`<div class="manager-profile-stat-grid"><div><span>Power rank</span><strong class="power-rank-with-move">${power?`#${power.rank}`:"—"}${power&&powerMovement.move?` <em class="rank-move ${powerMovement.move>0?'up':'down'}">${powerMovement.move>0?'↑':'↓'}${Math.abs(powerMovement.move)}</em>`:""}</strong></div><div><span>Ladder</span><strong>${power?`#${power.standingRank}`:"—"}</strong></div><div><span>Record</span><strong>${form.games?`${form.wins}-${form.games-form.wins}`:"—"}</strong></div><div><span>Championship odds</span><strong>${odds?championshipOddsLabel(odds):"—"}</strong></div><div><span>Team average age</span><strong>${avgAge?avgAge.toFixed(1):"—"}</strong></div></div>`;
   return `<section class="manager-profile-tab-panel active" data-manager-tab-panel="overview">${statGrid}<div class="manager-profile-grid">${gmProfileHTML(gm)}<section class="manager-profile-card profile-form-guide-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">FORM GUIDE</span><h3>Last Five</h3></div></div><div class="profile-form-strip interactive">${formPills}</div></section><section class="manager-profile-card profile-power-trend-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">SEASON JOURNEY</span><h3>Power Ranking Trend</h3></div><span class="period-pill">Week by week</span></div>${powerTrendHTML(id)}</section></div></section>`
 }
 function managerProfileRosterPanelHTML(managerId){
@@ -2446,59 +2328,19 @@ function tickerDrought(){const best=longestTradeDroughtSince();return best?`${be
 function startTickerMotion(root){
   const track=root?.querySelector('.ticker-track'),group=track?.querySelector('.ticker-group');
   if(!track||!group)return;
-
-  // Cancel any prior ticker motion before restarting after a re-render.
-  try{track._imoTickerAnimation?.cancel?.()}catch(_){}
-  if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
-
   const begin=()=>{
-    const distance=Math.max(1,Math.round(group.scrollWidth||group.getBoundingClientRect().width||1));
-    const speed=54; // px/sec — deliberately visible but still readable.
-    const durationMs=Math.max(12000,(distance/speed)*1000);
-
-    // Primary path: Web Animations API. This avoids browser-specific CSS calc()
-    // parsing issues and guarantees the track begins translating immediately.
-    if(typeof track.animate==='function'){
-      try{
-        track.style.animation='none';
-        track.style.transform='translate3d(0,0,0)';
-        const animation=track.animate(
-          [
-            {transform:'translate3d(0px,0,0)'},
-            {transform:`translate3d(-${distance}px,0,0)`}
-          ],
-          {duration:durationMs,iterations:Infinity,easing:'linear'}
-        );
-        animation.currentTime=Math.min(400,durationMs*0.03);
-        animation.play();
-        track._imoTickerAnimation=animation;
-        return;
-      }catch(error){console.warn('Ticker WAAPI fallback engaged',error)}
-    }
-
-    // Fallback for older browsers: direct requestAnimationFrame translation.
-    const started=performance.now()-350;
-    const tick=now=>{
-      if(!track.isConnected)return;
-      const elapsed=(now-started)/1000;
-      const x=-((elapsed*speed)%distance);
-      track.style.transform=`translate3d(${x}px,0,0)`;
-      track._imoTickerRaf=requestAnimationFrame(tick);
-    };
-    track._imoTickerRaf=requestAnimationFrame(tick);
+    const distance=Math.max(1,Math.round(group.getBoundingClientRect().width));
+    const duration=Math.max(14,distance/58);
+    track.style.setProperty('--ticker-distance',`${distance}px`);
+    track.style.setProperty('--ticker-duration',`${duration.toFixed(2)}s`);
+    track.style.animation='none';
+    track.offsetWidth;
+    track.style.animation=`ticker-scroll-var ${duration.toFixed(2)}s linear infinite`;
+    track.style.animationDelay='-0.35s';
+    track.style.animationPlayState='running';
   };
-
-  // Run once immediately, then once more after layout so the measured loop
-  // width is correct even during the first paint.
   begin();
-  requestAnimationFrame(()=>{
-    if(track._imoTickerAnimation){
-      const oldAnimation=track._imoTickerAnimation;
-      try{oldAnimation.cancel()}catch(_){}
-    }
-    if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
-    begin();
-  });
+  requestAnimationFrame(begin);
 }
 function renderTicker(){
   const root=$("leagueTicker");if(!root)return;
@@ -2508,7 +2350,6 @@ function renderTicker(){
     try{add(tickerPlayerRumours())}catch(error){console.warn("Ticker rumours unavailable",error)}
     safeArray(state.trades).filter(Boolean).slice(0,2).forEach(raw=>{try{add(shortTradeHeadline(normaliseTrade(raw)))}catch(error){console.warn('Ticker skipped malformed trade',error)}});
     for(const builder of [tickerMatchup,tickerStreak,tickerRankingOrRecord,tickerDrought]){try{add(builder())}catch(error){console.warn("Ticker story unavailable",error)}}
-    add("IMO Awards voting opens 23 February · closes 28 February");
     const unique=[...new Set(stories.map(text=>{try{return stripTickerEmoji(text)}catch{return String(text||"")}}).filter(Boolean))].slice(0,10);
     if(!unique.length)unique.push("IMO Dynasty · Live League HQ");
     const group=unique.map((text,i)=>`<span class="ticker-item">${esc(text)}</span>${i<unique.length-1?'<span class="ticker-dot">•</span>':''}`).join('');
@@ -2550,26 +2391,88 @@ function marketReactionStory(trade,powerRows,oddsRows){
   return{kicker:'MARKET REACTION',headline:`${hero?.name||'The latest trade'} sends the IMO market into overdrive`,image:hero?insiderPlayerImage(hero.id):state.managers.get(ids[0])?.avatar||null,body:`The deal is official, and the model has already repriced the fallout. ${lines.join(' ')} ${strongest?`The early market verdict leans toward ${managerName(strongest.id,trade)}, but the next completed gameweek will decide whether the model was sharp or merely loud.`:'The league now waits for the first real results.'}`};
 }
 function currentTopPlayer(){const avg=seasonAverageMap(String(state.modelBundle?.league?.season||'2026'));const rostered=new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)));const row=Object.entries(avg).filter(([id,v])=>rostered.has(String(id))&&Number(v)>0).sort((a,b)=>Number(b[1])-Number(a[1]))[0];return row?{id:String(row[0]),name:playerName(row[0]),avg:Number(row[1])}:null}
-function buildInsiderEdition(){
-  const eventKey=insiderEventKey(),storageKey='imoInsiderEditionV313';
-  try{const cached=JSON.parse(localStorage.getItem(storageKey)||'null');if(cached?.eventKey===eventKey)return cached}catch{}
-  const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.modelBundle;
-  const weeks=meaningfulWeeks(current),lastWeek=weeks.at(-1)||0,power=modelRows(state.modelBundle,weeks.at(-1)||Infinity,'power'),oddsRows=priceRows(lastWeek||Infinity),leader=power[0],latest=state.trades[0],topPlayer=currentTopPlayer(),streakText=tickerStreak(),rankingText=tickerRankingOrRecord();
-  const streakRows=[];
-  Object.entries(outcomesForBundle(current)).forEach(([id,games])=>{let type=null,count=0;for(let i=games.length-1;i>=0;i--){const next=games[i].result===1?'W':games[i].result===0?'L':'T';if(next==='T')break;if(type===null)type=next;if(next!==type)break;count++}if(type==='W'&&count>=3)streakRows.push({id:String(id),count})});
-  streakRows.sort((a,b)=>b.count-a.count);const hotTeam=streakRows[0],hotOdds=hotTeam?priceRows(lastWeek||Infinity).find(x=>String(x.id)===hotTeam.id):null;
-  const stories=[],eventSeed=[...eventKey].reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
-  const washedCandidates=allGameLogFormRows().filter(x=>Number(x.priorAvg)>23&&Number(x.recentAvg)>0&&Number(x.recentAvg)<18).sort((a,b)=>a.recentAvg-b.recentAvg),washed=washedCandidates[0];
-  if(latest){const playerAssets=Object.values(tradeAssets(latest)).flat().filter(a=>a.type==='player');const hero=playerAssets.sort((a,b)=>Number(b.value||0)-Number(a.value||0))[0];const teams=mids(latest).map(id=>managerName(id,latest));stories.push({kicker:'BLOCKBUSTER',headline:`${hero?.name||'The latest deal'} just changed the temperature of the league`,image:hero?insiderPlayerImage(hero.id):state.managers.get(mids(latest)[0])?.avatar||null,body:`${teams.join(' and ')} have forced every rival GM to reassess the market after completing the newest deal on the board. ${hero?.name?`${hero.name} is the name that sells the headline, but this is not a move that can be judged on reputation alone.`:'The move carries immediate consequences for roster construction and the next wave of negotiations.'} The early grades may call it balanced, but balanced trades do not always produce balanced outcomes. One side will eventually look brave; the other may look like it blinked first.`});}
-  if(washed&&stories.length<3&&eventSeed%3!==0){const owner=currentRosterOwner(washed.id);stories.push({kicker:'THE BIG QUESTION',headline:`Is ${washed.name} washed — or is the panic getting ridiculous?`,image:insiderPlayerImage(washed.id),body:`The box score is starting to look uncomfortable. ${washed.name} owns a season average of ${washed.priorAvg.toFixed(1)} fantasy points, yet has managed only ${washed.recentAvg.toFixed(1)} across the last five games. For a player with an established fantasy profile, that is not a harmless dip — it is the kind of slide that invites trade offers, buy-low messages and some truly disrespectful group-chat takes. ${owner?`${managerName(owner)} now has a decision to make: trust the résumé, or move before concern turns into consensus.`:'The league is watching closely.'} Calling him finished may be premature. Pretending nothing is wrong would be worse.`});}
-  if(hotTeam&&stories.length<3){const hotName=managerName(hotTeam.id),oddsLabel=hotOdds&&!hotOdds.eliminated?championshipOddsLabel(hotOdds):'long odds',stake=[25000,50000,75000][Math.min(2,Math.max(0,hotTeam.count-3))];stories.push({kicker:'MARKET BUZZ',headline:`A punter has reportedly dropped $${stake.toLocaleString()} on ${hotName} at ${oddsLabel}`,image:state.managers.get(hotTeam.id)?.avatar||null,body:`Someone has decided the hot streak is more than a cute story. After ${hotName} ripped off ${hotTeam.count} consecutive wins, league chatter claims a bold punter has taken a five-figure position on the franchise to win it all. It is reckless, dramatic and exactly the sort of wager that becomes legendary if the run continues. Rival GMs can laugh at the ticket now, but another statement win would turn today's price into the kind of number everyone claims they almost backed.`});}
-  if(leader&&stories.length<3){const move=(state.previousPowerRanks[leader.id]||leader.rank)-leader.rank;stories.push({kicker:'POWER SURGE',headline:`${leader.name} ${move>0?'storms to':'refuses to surrender'} the No. 1 spot`,image:state.managers.get(String(leader.id))?.avatar||null,body:`${leader.name} owns the strongest all-round profile in IMO Dynasty right now, and the rest of the league is running out of excuses. ${move>0?`A jump of ${move} place${move===1?'':'s'} has turned momentum into a statement.`:'Holding the top spot is now less of a surprise and more of a warning.'} Results, form and title outlook all point in the same direction. The only real question is whether this is a temporary peak — or the beginning of a gap nobody else can close.`});}
-  if(topPlayer&&stories.length<3){const owner=currentRosterOwner(topPlayer.id);stories.push({kicker:'AWARD WATCH',headline:`The MVP race may already belong to ${topPlayer.name}`,image:insiderPlayerImage(topPlayer.id),body:`At ${topPlayer.avg.toFixed(1)} fantasy points per game, ${topPlayer.name} is not merely leading the early conversation — he is threatening to make it boring. ${owner?`${managerName(owner)} has built a weekly advantage around that production, and every opponent now enters the matchup knowing the margin for error is almost nonexistent.`:'The numbers have pushed him to the centre of the awards race.'} There is plenty of season left, but anyone waiting for the pace to collapse may be waiting a very long time.`});}
-  while(stories.length<3){stories.push({kicker:'LEAGUE WATCH',headline:rankingText||streakText||'The next gameweek could reshape the league',image:null,body:`With Week ${lastWeek+1} approaching, the margins between contenders are beginning to matter. Power-ranking movement, changing roster identities and the next trade call could all alter the league's direction before the next edition. Front offices are watching the market closely, and one decisive move may be enough to turn quiet momentum into the week's defining story.`})}
-  const coming=[];if(topPlayer)coming.push(`${topPlayer.name}'s MVP case under the microscope`);if(latest)coming.push('Trade market reaction and potential follow-up deals');coming.push(lastWeek?`Week ${lastWeek+1} matchup pressure builds`:'Opening-week power picture takes shape');coming.push('Awards watch and emerging breakout candidates');
-  let issue=1;try{const prev=JSON.parse(localStorage.getItem(storageKey)||'null');issue=(prev?.issue||0)+1}catch{}
-  const edition={eventKey,issue,date:new Date().toISOString(),stories:stories.slice(0,3),coming:coming.slice(0,3)};try{localStorage.setItem(storageKey,JSON.stringify(edition));localStorage.setItem('imoMarketSnapshotV1',JSON.stringify(marketSnapshot()))}catch{}return edition;
+function insiderDailySeed(){
+  const d=new Date(),day=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return [...day].reduce((n,ch)=>((n*31)+ch.charCodeAt(0))>>>0,2166136261)
 }
+function insiderRng(seed){let x=(seed>>>0)||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296}}
+function insiderPick(list,rng){return list?.length?list[Math.floor(rng()*list.length)]:null}
+function insiderShuffle(list,rng){const out=[...list];for(let i=out.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out}
+function insiderEligiblePlayers(){
+  const season=String(state.modelBundle?.league?.season||'2026'),avgs=seasonAverageMap(season),rostered=new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)));
+  const firstRound=new Set((state.allDraftSelections||[]).filter(x=>Number(x.round)===1).map(x=>String(x.playerId||x.player_id||'')));
+  return [...rostered].map(id=>({id,name:playerName(id),avg:Number(avgs[id]||0),owner:currentRosterOwner(id),firstRound:firstRound.has(id)})).filter(x=>x.name&&x.name!=='Unknown player'&&(x.avg>=18||x.firstRound)).sort((a,b)=>b.avg-a.avg)
+}
+function insiderWeaknessStories(rng){
+  const managers=[...state.managers.keys()].map(id=>{const gm=managerGMProfile(String(id));return{id:String(id),name:managerName(String(id)),avatar:state.managers.get(String(id))?.avatar||null,weaknesses:gm?.weaknesses||[],gm}}).filter(x=>x.weaknesses.length);
+  return insiderShuffle(managers,rng).slice(0,4).map(team=>{const weakness=insiderPick(team.weaknesses,rng),headlines=[
+    `${team.name}'s front office has a problem it cannot mute in the group chat`,
+    `League audit finds ${team.name} guilty of “${weakness.toLowerCase()}”`,
+    `${team.name} has a roster problem and unfortunately everyone can see it`,
+    `The spreadsheet has filed a formal complaint against ${team.name}`,
+    `${team.name}'s biggest weakness is becoming everybody else's favourite talking point`
+  ],openers=[
+    `The numbers have identified ${weakness.toLowerCase()} as a genuine pressure point for ${team.name}, which is analytics language for “please stop pretending this is fine.”`,
+    `${team.name} has officially been diagnosed with ${weakness.toLowerCase()}, and rival GMs are expected to show absolutely no compassion whatsoever.`,
+    `A routine front-office inspection has discovered ${weakness.toLowerCase()} at ${team.name}. Sources confirm the problem was hiding in plain sight.`,
+    `The GM profile keeps flashing one warning for ${team.name}: ${weakness.toLowerCase()}. At this point the dashboard is less scouting report and more intervention.`
+  ],closers=[
+    `The fix may be available on the trade market, assuming the rest of the league can stop laughing long enough to answer the phone.`,
+    `There is still time to fix it, but “hoping nobody notices” has now been removed from the list of viable strategies.`,
+    `The good news is that roster construction can change quickly. The bad news is every rival manager now knows exactly where to squeeze.`,
+    `Expect incoming offers to be extremely helpful, completely fair and definitely not designed to exploit this exact weakness.`
+  ];return{kicker:'FRONT OFFICE ROAST',headline:insiderPick(headlines,rng),image:team.avatar,body:`${insiderPick(openers,rng)} ${insiderPick(closers,rng)}`}})
+}
+function insiderPlayerStories(players,rng){
+  return insiderShuffle(players,rng).slice(0,8).map(p=>{const owner=p.owner?managerName(p.owner):'his front office',avg=p.avg>0?p.avg.toFixed(1):null,headlineSets=[
+    `${p.name} is becoming an administrative problem for the rest of IMO`,
+    `Opposing GMs reportedly request investigation into ${p.name} being “too useful”`,
+    `${p.name} continues rude campaign of scoring fantasy points`,
+    `${owner} asked to explain how ${p.name} ended up on the roster`,
+    `League sources confirm ${p.name} remains annoyingly good`,
+    `${p.name} has once again ruined somebody's perfectly reasonable matchup plan`,
+    `IMO rivals discover “just stop ${p.name}” is not a real defensive strategy`,
+    `${p.name}'s trade price now requires several assets and a handwritten apology`
+  ],openers=avg?[
+    `At ${avg} fantasy points per game, ${p.name} has moved beyond “good player” territory and into the much more irritating category of “weekly problem.”`,
+    `${p.name} is averaging ${avg} fantasy points, which has given ${owner} the confidence of a manager who absolutely plans to mention it in every trade negotiation.`,
+    `The season average sits at ${avg}, and rival managers are running out of creative ways to describe how unpleasant that is to play against.`,
+    `${p.name}'s ${avg}-point average is doing serious damage to the league-wide supply of cope.`
+  ]:[
+    `${p.name} arrived through the first round of the rookie draft, meaning patience is technically required even if the group chat has never demonstrated any.`,
+    `As a former first-round rookie selection, ${p.name} remains important enough for every decent game to trigger three trade enquiries and one outrageous valuation.`
+  ],closers=[
+    `For now, the only known counter is to own a better player, which analysts admit is not especially actionable advice.`,
+    `The league will continue monitoring the situation and complaining about it with tremendous professionalism.`,
+    `Any buy-low window appears to have been boarded up, painted over and guarded by ${owner}.`,
+    `Opponents are encouraged to remain calm, set their lineups and then watch the problem happen anyway.`
+  ];return{kicker:p.firstRound?'BLUE-CHIP WATCH':'STAR WATCH',headline:insiderPick(headlineSets,rng),image:insiderPlayerImage(p.id),body:`${insiderPick(openers,rng)} ${insiderPick(closers,rng)}`}})
+}
+function insiderTradeRoastStories(rng){
+  return (state.trades||[]).slice(0,5).map(trade=>{const ids=mids(trade),names=ids.map(id=>managerName(id,trade)),assets=Object.values(tradeAssets(trade)).flat().filter(a=>a.type==='player').sort((a,b)=>Number(b.value||0)-Number(a.value||0)),hero=assets[0];return{kicker:'TRADE DESK',headline:insiderPick([
+    `${names.join(' and ')} complete trade; both immediately claim they won`,
+    `${hero?.name||'Latest trade'} deal sends league economists back to the calculator`,
+    `Another IMO trade has occurred and objectivity has been cancelled`,
+    `${names[0]||'One GM'} hits “accept”; group chat prepares the courtroom`
+  ],rng),image:hero?insiderPlayerImage(hero.id):state.managers.get(String(ids[0]))?.avatar||null,body:insiderPick([
+    `${names.join(' and ')} have completed a deal, triggering the traditional IMO ceremony in which both sides declare victory before anybody involved has played a game. ${hero?.name?`${hero.name} is the biggest name moving, so naturally every other detail will be ignored for at least 24 hours.`:'The packages will now be analysed far beyond what any healthy person would consider necessary.'}`,
+    `The latest transaction between ${names.join(' and ')} is officially on the books. Early reactions range from “interesting” to “what on earth are you doing,” which means consensus has been achieved exactly as expected.`,
+    `${names.join(' and ')} have chosen roster violence. ${hero?.name?`${hero.name} headlines the move, while rival managers begin retroactively claiming they could have offered more.`:'The deal has already produced several confident opinions unsupported by evidence.'}`
+  ],rng)}})
+}
+function buildInsiderEdition(){
+  const day=new Date(),dayKey=`${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`,eventKey=`${dayKey}|${insiderEventKey()}`,storageKey='imoInsiderEditionV314';
+  try{const cached=JSON.parse(localStorage.getItem(storageKey)||'null');if(cached?.eventKey===eventKey)return cached}catch{}
+  const rng=insiderRng(insiderDailySeed()),players=insiderEligiblePlayers(),pool=[...insiderWeaknessStories(rng),...insiderPlayerStories(players,rng),...insiderTradeRoastStories(rng)];
+  const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.modelBundle,weeks=meaningfulWeeks(current),lastWeek=weeks.at(-1)||0,power=modelRows(state.modelBundle,lastWeek||Infinity,'power');
+  if(power[0]){const leader=power[0];pool.push({kicker:'POWER RANKINGS DEPARTMENT',headline:insiderPick([`${leader.name} sits No. 1 and has become completely unbearable`,`League confirms ${leader.name} is still top; humility remains unavailable`,`Everyone hates the rankings when ${leader.name} is first`],rng),image:state.managers.get(String(leader.id))?.avatar||null,body:insiderPick([`${leader.name} currently owns the No. 1 power ranking, a development the front office has reportedly handled with exactly the amount of restraint you would expect: none. The rest of the league is invited to change the rankings using the controversial method of winning more games.`,`The model still has ${leader.name} at the top of the pile. Rival managers have requested a recount, a new formula and possibly a different sport. Unfortunately, the easiest solution remains beating them.`],rng)})}
+  let stories=insiderShuffle(pool,rng).slice(0,3);
+  while(stories.length<3)stories.push({kicker:'LEAGUE NONSENSE',headline:insiderPick(['Quiet day in IMO lasts nearly seven minutes','League front offices successfully avoid sensible behaviour','Trade machine remains open despite medical advice'],rng),image:null,body:`Week ${lastWeek+1} approaches with every manager convinced their plan is working and several spreadsheets suggesting otherwise. No emergency moves are required yet, which historically means somebody will make one anyway.`});
+  const coming=insiderShuffle([...(players.slice(0,5).map(p=>`${p.name}: superstar, trade chip or weekly public nuisance?`)),...([...state.managers.keys()].slice(0,5).map(id=>`${managerName(id)} front office audit`)),`Week ${lastWeek+1} matchup overreactions`,`The trade market's next completely reasonable asking price`],rng).slice(0,3);
+  let issue=1;try{const prev=JSON.parse(localStorage.getItem(storageKey)||'null');issue=(prev?.issue||0)+1}catch{}
+  const edition={eventKey,issue,date:new Date().toISOString(),stories,coming};try{localStorage.setItem(storageKey,JSON.stringify(edition));localStorage.setItem('imoMarketSnapshotV1',JSON.stringify(marketSnapshot()))}catch{}return edition
+}
+
 function renderHeadlines(){const root=$('headlinesContent');if(!root)return;const ed=buildInsiderEdition();root.innerHTML=`<header class="insider-header"><div><span class="insider-brand"><img src="assets/imo-insider.svg" alt=""><span><b>IMO INSIDER</b><small>DAILY LEAGUE EDITION</small></span></span><h2 id="headlinesTitle">News</h2><p>${fmt(new Date(ed.date).getTime())} · Issue #${String(ed.issue).padStart(3,'0')}</p></div><span class="insider-live">LATEST EDITION</span></header><div class="insider-stories">${ed.stories.map((story,i)=>`<article class="insider-story">${story.image?`<div class="insider-image"><img src="${esc(story.image)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></div>`:''}<div class="insider-copy"><span>${esc(story.kicker)}</span><h3>${esc(story.headline)}</h3><p>${esc(story.body)}</p></div></article>`).join('')}</div><aside class="coming-tomorrow"><span>COMING TOMORROW</span><ul>${ed.coming.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></aside>`}
 function openHeadlines(){renderHeadlines();const modal=$('headlinesModal');modal?.classList.add('open');modal?.setAttribute('aria-hidden','false');document.body.classList.add('headlines-open')}
 function closeHeadlines(){const modal=$('headlinesModal');modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('headlines-open')}
@@ -2718,7 +2621,7 @@ function instantManagerShell(){
   target.innerHTML=`<div class="instant-manager-shell"><div class="instant-manager-note"><strong>Rankings are being verified.</strong><span>Profiles remain available while the complete odds model loads.</span></div>${[...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>{const avatar=m.avatar?`<img src="${esc(m.avatar)}" alt="" loading="lazy">`:`<span>${esc(m.initials||"GM")}</span>`;return `<button type="button" class="instant-manager-link manager-profile-link" data-manager-id="${esc(m.id)}"><span class="power-avatar">${avatar}</span><strong>${esc(m.name)}</strong><small>Open profile</small></button>`}).join("")}</div>`;
 }
 function lazyHomepageDefinitions(){return[
-  ['leaderboard','leaderboard',renderLeaderboard],['tradeHeatmap','trade partners',renderHeatmap],['goodForm','player form',renderPlayerForm],['leagueRecords','league records',renderRecords],['tradeBlock','most traded players',renderBlock],['waiverBlock','most waived players',renderWaivedBlock],['biggestTrades','biggest trades',renderBiggestTrades],['allNbaChoices','voting',renderVoting]
+  ['leaderboard','leaderboard',renderLeaderboard],['tradeHeatmap','trade partners',renderHeatmap],['goodForm','player form',renderPlayerForm],['leagueRecords','league records',renderRecords],['tradeBlock','most traded players',renderBlock],['waiverBlock','most waived players',renderWaivedBlock],['biggestTrades','biggest trades',renderBiggestTrades]
 ]}
 function setupLazyHomepageModules(){
   if(!('IntersectionObserver' in window)){lazyHomepageDefinitions().forEach(([id,name,fn])=>{const prior=state.lazyHomepageModules.get(id);state.lazyHomepageModules.set(id,{name,fn,rendered:true,node:$(id)});if(!prior?.rendered){if(name==='player form')ensureGameLogFeatures().then(()=>safeRender(name,fn));else safeRender(name,fn)}});return}
@@ -2742,12 +2645,11 @@ const HUB_RENDERERS={
   'league records':renderRecords,
   'most traded players':renderBlock,
   'most waived players':renderWaivedBlock,
-  'biggest trades':renderBiggestTrades,
-  'voting':renderVoting
+  'biggest trades':renderBiggestTrades
 };
 const HUB_CHANGESETS={
-  core:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades','voting'],
-  current:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades','voting'],
+  core:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
+  current:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
   history:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
   market:['power rankings','trade of the week','biggest trades'],
   trades:['trade of the week','recent trades','ticker','leaderboard','trade partners','league records','most traded players','biggest trades'],
@@ -3480,8 +3382,6 @@ document.addEventListener("pointerup",e=>{
 });
 
 document.addEventListener("click",e=>{
-  const hubNav=e.target.closest?.(".hub-nav-menu");
-  if(hubNav&&!e.target.closest(".hub-nav-trigger")){setTimeout(()=>{hubNav.open=false},0)}
   if(e.target.closest("#globalSearchBtn")){openGlobalSearch();return}
   if(e.target.closest("[data-close-global-search]")||e.target.closest("#globalSearchClose")){closeGlobalSearch();return}
   if(e.target.closest("[data-global-search-back]")){renderGlobalSearchResults($("globalSearchInput")?.value||"");return}
