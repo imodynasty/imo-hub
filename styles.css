@@ -2544,3 +2544,11 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
   .h2h-featured-team.right>.h2h-sleeper-projection{grid-column:1/3;justify-self:end;margin-right:50px}
   .h2h-compact-team>.h2h-sleeper-projection{grid-column:2/4;width:max-content;margin-top:1px}
 }
+
+
+/* V3.5.1 — Trophy identity system. League Champion is the only gold award. */
+.physical-award--gold .award-engraving{border-color:rgba(255,213,108,.58);background:linear-gradient(180deg,#a77c27,#3c2a0e);color:#fff1bd}
+.physical-award--silver .award-engraving{border-color:#dbe3ec;background:linear-gradient(180deg,#89939e,#303740);color:#fff}
+.physical-award--bronze .award-engraving{border-color:#c77b57;background:linear-gradient(180deg,#8c4c31,#2c1710);color:#ffd8c4}
+.award-mark--small{font-size:11px;letter-spacing:1px}
+.award-mark--score{font-size:11px;letter-spacing:1.5px}
