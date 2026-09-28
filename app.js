@@ -1,5 +1,5 @@
 /* IMO DYNASTY V3.3.80 — Immediate Ticker Motion */
-const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51};
+const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
 // traded historical pick into the player it became. Sleeper's drafter/current
@@ -170,7 +170,7 @@ function latestKnownAverage(playerId){for(const bundle of [...state.bundles].sor
 function playerSeasonAverage(playerId,season){const bundle=bundleForSeason(season);if(!bundle)return 0;const weeks=meaningfulWeeks(bundle);return weeks.length?Number(buildPlayerAverages(bundle,weeks.at(-1))[playerId]||0):0}
 function tradeSeasonAverage(playerId,t){const bundle=bundleForTrade(t);if(bundle){const weeks=meaningfulWeeks(bundle);if(weeks.length){const avg=Number(buildPlayerAverages(bundle,weeks.at(-1))[playerId]||0);if(avg>0)return avg}}return latestKnownAverage(playerId)}
 function playerAgeAt(playerId,timestamp){const p=state.players[playerId]||{},at=new Date(Number(timestamp)||Date.now()),raw=p.birth_date||p.birthdate||p.dob;if(raw){const born=new Date(raw);if(!Number.isNaN(born.getTime())){let age=at.getFullYear()-born.getFullYear();if(at.getMonth()<born.getMonth()||(at.getMonth()===born.getMonth()&&at.getDate()<born.getDate()))age--;return Math.max(18,age)}}const currentAge=Number(p.age);if(Number.isFinite(currentAge))return Math.max(18,currentAge-(new Date().getFullYear()-at.getFullYear()));return 28}
-function ageMultiplier(age){if(age<=19)return 1.18;if(age===20)return 1.20;if(age===21)return 1.22;if(age===22)return 1.23;if(age===23)return 1.24;if(age===24||age===25)return 1.25;if(age===26)return 1.24;if(age===27)return 1.22;if(age===28)return 1.18;if(age===29)return 1.12;if(age===30)return 1.05;if(age===31)return .98;if(age===32)return .92;if(age===33)return .88;if(age===34)return .84;if(age===35)return .80;return .76}
+function ageMultiplier(age){if(age<=19)return 1.40;if(age===20)return 1.35;if(age===21)return 1.33;if(age===22)return 1.31;if(age===23)return 1.30;if(age===24)return 1.28;if(age===25)return 1.25;if(age===26)return 1.24;if(age===27)return 1.22;if(age===28)return 1.18;if(age===29)return 1.12;if(age===30)return 1.05;if(age===31)return .98;if(age===32)return .92;if(age===33)return .88;if(age===34)return .84;if(age===35)return .80;return .76}
 function eliteMultiplier(avg){if(avg>=40)return 1.40;if(avg>=35)return 1.28;if(avg>=30)return 1.18;if(avg>=25)return 1.10;if(avg>=20)return 1.05;if(avg>=10)return 1.02;return 1}
 function playerDynastyValue(playerId,average,timestamp){const avg=Number(average)||0;return avg>0?avg*ageMultiplier(playerAgeAt(playerId,timestamp))*eliteMultiplier(avg):0}
 function topTenSeasonAverageIds(t){
@@ -293,12 +293,17 @@ function tradeSideMetrics(t,managerId){
   return result
 }
 function packageGradePoints(edge,net){
-  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-9?5:edge>=-19?4:edge>=-31?3:2;
+  // V3.3.83: normal dynasty trades should generally live in the C-to-A+ range.
+  // D territory is now reserved for clearly lopsided outcomes rather than ordinary
+  // preference/fit disagreements. F/Fleece remain governed separately below.
+  let points=edge>=45?10:edge>=32?9:edge>=20?8:edge>=9?7:edge>=2?6:edge>=-14?5:edge>=-30?4:3;
   // Small-value trades cannot produce sensational grades solely from percentage swings.
   if(points>=9&&net<12)points=net>=8?8:net>=4?7:6;
   if(points===8&&net<7)points=net>=4?7:net>=2?6:5;
   if(points===7&&net<3)points=6;
-  if(points<=2&&net>-18)points=3;
+  // A harsh percentage gap on a relatively small absolute loss should still be D+
+  // rather than a full D. Full D now needs both a sizeable relative and real-value loss.
+  if(points===3&&net>-22)points=4;
   return points
 }
 function gradeFromPoints(points,m){
@@ -968,6 +973,119 @@ function renderBiggestTrades(){
   try{const limit=state.biggestTradesExpanded?10:5,rows=safeArray(state.trades).filter(Boolean).map(raw=>({t:normaliseTrade(raw),value:safeTradeValue(raw)})).sort((a,b)=>b.value-a.value||(Number(b.t?.created)||0)-(Number(a.t?.created)||0)).slice(0,limit);root.innerHTML=rows.length?rows.map((row,i)=>{let details='';try{details=tradeDetailsHTML(row.t)}catch(error){console.warn('Ranked trade details recovered',row.t?.transaction_id||row.t?.created,error);details='<div class="block-empty">This trade has partial data, but available transaction information is still shown.</div>'}const names=mids(row.t).map(id=>managerName(id,row.t)).filter(Boolean);return `<details class="big-trade-card"><summary><span class="big-trade-rank">${i+1}</span><div><strong>${names.map(esc).join(' ↔ ')||'League trade'}</strong><small>${fmt(row.t.created)} · ${esc(row.t.season_label||'')}</small></div><span class="big-trade-chevron">View trade</span></summary><div class="trade-detail-body">${details}</div></details>`}).join(''):'<div class="block-empty">No completed trades available.</div>';if(toggle)toggle.textContent=state.biggestTradesExpanded?'Show top 5':'Show top 10'}
   catch(error){console.error('Biggest Trades render failed',error);root.innerHTML='<div class="block-empty">Biggest trade rankings are temporarily unavailable.</div>'}
   finally{root.classList.remove('loading')}
+}
+function currentVoteAverageMap(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&meaningfulWeeks(current).length)return buildPlayerAverages(current,meaningfulWeeks(current).at(-1));return state.playerAverages}
+function previousSeasonAverageMap(){const sorted=state.bundles.filter(b=>meaningfulWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season));const previous=sorted.find(b=>b!==state.modelBundle)||sorted[1];return previous?buildPlayerAverages(previous,meaningfulWeeks(previous).at(-1)):{} }
+
+function eligibleRookie(id){
+  const p=state.players[id]||{},season=String(state.league?.season||"2026");
+  return Number(p.years_exp)===0||
+    String(p.rookie_year||p.first_season||"")===season||
+    String(p.status||"").toLowerCase()==="rookie"
+}
+function votingOpen(){const now=Date.now();return now>=new Date(CONFIG.votingOpens).getTime()&&now<new Date(CONFIG.votingCloses).getTime()}
+function votingPhase(){const now=Date.now(),opens=new Date(CONFIG.votingOpens).getTime(),closes=new Date(CONFIG.votingCloses).getTime(),announce=new Date(CONFIG.awardsAnnounced).getTime();return now<opens?'pre':now<closes?'open':now<announce?'closed':'announced'}
+function votingCountdownText(){const phase=votingPhase(),target=phase==='pre'?new Date(CONFIG.votingOpens).getTime():phase==='open'?new Date(CONFIG.votingCloses).getTime():phase==='closed'?new Date(CONFIG.awardsAnnounced).getTime():0;if(phase==='announced')return 'Winners announced 1 March';const remaining=Math.max(0,target-Date.now()),days=Math.floor(remaining/864e5),hours=Math.floor((remaining%864e5)/36e5),minutes=Math.floor((remaining%36e5)/6e4),seconds=Math.floor((remaining%6e4)/1000);const lead=phase==='pre'?'Voting opens':phase==='open'?'Voting closes':'Winners announced';return `${lead} in ${days}d ${hours}h ${minutes}m ${seconds}s`}
+function categoryKey(category){return `imoVoteSubmitted:${category}:2027`}
+function categorySubmitted(category){return Boolean(localStorage.getItem(categoryKey(category)))}
+function lockCategory(category,message){
+  const card=document.querySelector(`.vote-category[data-category="${category}"]`);
+  const overlay=$(`${category}Lock`);
+  if(!card||!overlay)return;
+  card.classList.add("vote-locked");
+  overlay.innerHTML=`<div><strong>🔒 ${esc(message)}</strong></div>`;
+  card.querySelectorAll("input,select,button").forEach(el=>el.disabled=true)
+}
+function unlockCategory(category){
+  const card=document.querySelector(`.vote-category[data-category="${category}"]`);
+  const overlay=$(`${category}Lock`);
+  if(!card||!overlay)return;
+  card.classList.remove("vote-locked");
+  overlay.innerHTML="";
+  card.querySelectorAll("input,select,button").forEach(el=>el.disabled=false)
+}
+function applyVotingLocks(){
+  const open=votingOpen(),phase=votingPhase(),countdown=votingCountdownText();
+  $("votingCountdown").textContent=countdown;
+  ["allNba","rookie","mip"].forEach(category=>{
+    const status=$(category==="allNba"?"allNbaStatus":category==="rookie"?"rookieStatus":"mipStatus");
+    if(categorySubmitted(category)){
+      lockCategory(category,"Vote submitted");
+      if(status)status.textContent="Your vote has been locked on this device."
+    }else if(!open){
+      const message=phase==='pre'?'Voting opens 23 February':phase==='closed'?'Voting closed — winners announced 1 March':'Winners announced 1 March';
+      lockCategory(category,message);
+      if(status)status.textContent=countdown
+    }else{
+      unlockCategory(category);
+      if(status)status.textContent="Voting closes 28 February. One submission allowed on this device."
+    }
+  })
+}
+function storeVote(category,payload){
+  if(!votingOpen())return false;
+  if(categorySubmitted(category))return false;
+  localStorage.setItem(categoryKey(category),JSON.stringify({...payload,submittedAt:new Date().toISOString()}));
+  applyVotingLocks();
+  return true
+}
+function renderVoting(){
+  const avgs=currentVoteAverageMap(),prev=previousSeasonAverageMap();
+  state.previousPlayerAverages=prev;
+  const allPlayers=Object.entries(avgs)
+    .filter(([,v])=>Number(v)>0)
+    .map(([id,avg])=>({id,avg:Number(avg),name:playerName(id)}))
+    .sort((a,b)=>b.avg-a.avg||a.name.localeCompare(b.name));
+  const top=allPlayers.slice(0,50);
+  state.votePlayers=top;
+  const chosen=new Set();
+
+  $("allNbaChoices").classList.remove("loading");
+  const draw=(query="")=>{
+    $("allNbaChoices").innerHTML=top
+      .filter(x=>x.name.toLowerCase().includes(query.toLowerCase()))
+      .map(x=>`<label class="vote-option"><input type="checkbox" value="${x.id}" ${chosen.has(x.id)?"checked":""}><span>${esc(x.name)}</span><small>${x.avg.toFixed(1)}</small></label>`)
+      .join("")
+  };
+  draw();
+  $("allNbaCount").textContent=chosen.size;
+  $("allNbaSearch").oninput=e=>draw(e.target.value);
+  $("allNbaChoices").onchange=e=>{
+    if(!e.target.matches("input"))return;
+    if(e.target.checked&&chosen.size>=10){e.target.checked=false;return}
+    e.target.checked?chosen.add(e.target.value):chosen.delete(e.target.value);
+    $("allNbaCount").textContent=chosen.size
+  };
+
+  const rookies=allPlayers.filter(x=>eligibleRookie(x.id));
+  $("rookieVote").innerHTML='<option value="">Select a rookie…</option>'+
+    rookies.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.avg.toFixed(1)}</option>`).join("");
+
+  const mip=allPlayers
+    .filter(x=>Number(prev[x.id])>0)
+    .map(x=>({...x,improvement:x.avg-Number(prev[x.id])}))
+    .sort((a,b)=>b.improvement-a.improvement||b.avg-a.avg);
+  $("mipVote").innerHTML='<option value="">Select a player…</option>'+
+    mip.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.improvement>=0?"+":""}${x.improvement.toFixed(1)} PPG</option>`).join("");
+
+  $("submitAllNba").onclick=()=>{
+    if(chosen.size===0||chosen.size>10){$("allNbaStatus").textContent="Select between 1 and 10 players.";return}
+    if(storeVote("allNba",{players:[...chosen],fanWeight:.35,averageWeight:.65,normalisationPool:"top50"}))$("allNbaStatus").textContent="All-NBA vote submitted."
+  };
+  $("submitRookie").onclick=()=>{
+    const player=$("rookieVote").value;
+    if(!player){$("rookieStatus").textContent="Select one rookie.";return}
+    if(storeVote("rookie",{player,fanWeight:.35,averageWeight:.65}))$("rookieStatus").textContent="ROTY vote submitted."
+  };
+  $("submitMip").onclick=()=>{
+    const player=$("mipVote").value;
+    if(!player){$("mipStatus").textContent="Select one player.";return}
+    if(storeVote("mip",{player,fanWeight:.50,improvementWeight:.50,baselineSeason:"2025",currentSeason:"2026"}))$("mipStatus").textContent="MIP vote submitted."
+  };
+
+  applyVotingLocks();
+  clearInterval(window.__imoVotingTimer);
+  window.__imoVotingTimer=setInterval(applyVotingLocks,1000)
 }
 
 function managerTrades(managerId){
@@ -2328,19 +2446,59 @@ function tickerDrought(){const best=longestTradeDroughtSince();return best?`${be
 function startTickerMotion(root){
   const track=root?.querySelector('.ticker-track'),group=track?.querySelector('.ticker-group');
   if(!track||!group)return;
+
+  // Cancel any prior ticker motion before restarting after a re-render.
+  try{track._imoTickerAnimation?.cancel?.()}catch(_){}
+  if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
+
   const begin=()=>{
-    const distance=Math.max(1,Math.round(group.getBoundingClientRect().width));
-    const duration=Math.max(14,distance/58);
-    track.style.setProperty('--ticker-distance',`${distance}px`);
-    track.style.setProperty('--ticker-duration',`${duration.toFixed(2)}s`);
-    track.style.animation='none';
-    track.offsetWidth;
-    track.style.animation=`ticker-scroll-var ${duration.toFixed(2)}s linear infinite`;
-    track.style.animationDelay='-0.35s';
-    track.style.animationPlayState='running';
+    const distance=Math.max(1,Math.round(group.scrollWidth||group.getBoundingClientRect().width||1));
+    const speed=54; // px/sec — deliberately visible but still readable.
+    const durationMs=Math.max(12000,(distance/speed)*1000);
+
+    // Primary path: Web Animations API. This avoids browser-specific CSS calc()
+    // parsing issues and guarantees the track begins translating immediately.
+    if(typeof track.animate==='function'){
+      try{
+        track.style.animation='none';
+        track.style.transform='translate3d(0,0,0)';
+        const animation=track.animate(
+          [
+            {transform:'translate3d(0px,0,0)'},
+            {transform:`translate3d(-${distance}px,0,0)`}
+          ],
+          {duration:durationMs,iterations:Infinity,easing:'linear'}
+        );
+        animation.currentTime=Math.min(400,durationMs*0.03);
+        animation.play();
+        track._imoTickerAnimation=animation;
+        return;
+      }catch(error){console.warn('Ticker WAAPI fallback engaged',error)}
+    }
+
+    // Fallback for older browsers: direct requestAnimationFrame translation.
+    const started=performance.now()-350;
+    const tick=now=>{
+      if(!track.isConnected)return;
+      const elapsed=(now-started)/1000;
+      const x=-((elapsed*speed)%distance);
+      track.style.transform=`translate3d(${x}px,0,0)`;
+      track._imoTickerRaf=requestAnimationFrame(tick);
+    };
+    track._imoTickerRaf=requestAnimationFrame(tick);
   };
+
+  // Run once immediately, then once more after layout so the measured loop
+  // width is correct even during the first paint.
   begin();
-  requestAnimationFrame(begin);
+  requestAnimationFrame(()=>{
+    if(track._imoTickerAnimation){
+      const oldAnimation=track._imoTickerAnimation;
+      try{oldAnimation.cancel()}catch(_){}
+    }
+    if(track._imoTickerRaf){cancelAnimationFrame(track._imoTickerRaf);track._imoTickerRaf=0}
+    begin();
+  });
 }
 function renderTicker(){
   const root=$("leagueTicker");if(!root)return;
@@ -2350,6 +2508,7 @@ function renderTicker(){
     try{add(tickerPlayerRumours())}catch(error){console.warn("Ticker rumours unavailable",error)}
     safeArray(state.trades).filter(Boolean).slice(0,2).forEach(raw=>{try{add(shortTradeHeadline(normaliseTrade(raw)))}catch(error){console.warn('Ticker skipped malformed trade',error)}});
     for(const builder of [tickerMatchup,tickerStreak,tickerRankingOrRecord,tickerDrought]){try{add(builder())}catch(error){console.warn("Ticker story unavailable",error)}}
+    add("IMO Awards voting opens 23 February · closes 28 February");
     const unique=[...new Set(stories.map(text=>{try{return stripTickerEmoji(text)}catch{return String(text||"")}}).filter(Boolean))].slice(0,10);
     if(!unique.length)unique.push("IMO Dynasty · Live League HQ");
     const group=unique.map((text,i)=>`<span class="ticker-item">${esc(text)}</span>${i<unique.length-1?'<span class="ticker-dot">•</span>':''}`).join('');
@@ -2391,88 +2550,59 @@ function marketReactionStory(trade,powerRows,oddsRows){
   return{kicker:'MARKET REACTION',headline:`${hero?.name||'The latest trade'} sends the IMO market into overdrive`,image:hero?insiderPlayerImage(hero.id):state.managers.get(ids[0])?.avatar||null,body:`The deal is official, and the model has already repriced the fallout. ${lines.join(' ')} ${strongest?`The early market verdict leans toward ${managerName(strongest.id,trade)}, but the next completed gameweek will decide whether the model was sharp or merely loud.`:'The league now waits for the first real results.'}`};
 }
 function currentTopPlayer(){const avg=seasonAverageMap(String(state.modelBundle?.league?.season||'2026'));const rostered=new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)));const row=Object.entries(avg).filter(([id,v])=>rostered.has(String(id))&&Number(v)>0).sort((a,b)=>Number(b[1])-Number(a[1]))[0];return row?{id:String(row[0]),name:playerName(row[0]),avg:Number(row[1])}:null}
-function insiderDailySeed(){
-  const d=new Date(),day=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  return [...day].reduce((n,ch)=>((n*31)+ch.charCodeAt(0))>>>0,2166136261)
-}
-function insiderRng(seed){let x=(seed>>>0)||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296}}
-function insiderPick(list,rng){return list?.length?list[Math.floor(rng()*list.length)]:null}
+function insiderDailySeed(value){let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function insiderRng(seed){let x=seed>>>0;return()=>{x=(Math.imul(x,1664525)+1013904223)>>>0;return x/4294967296}}
+function insiderPick(list,rng){return list?.length?list[Math.floor(rng()*list.length)%list.length]:null}
 function insiderShuffle(list,rng){const out=[...list];for(let i=out.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out}
-function insiderEligiblePlayers(){
-  const season=String(state.modelBundle?.league?.season||'2026'),avgs=seasonAverageMap(season),rostered=new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String)));
-  const firstRound=new Set((state.allDraftSelections||[]).filter(x=>Number(x.round)===1).map(x=>String(x.playerId||x.player_id||'')));
-  return [...rostered].map(id=>({id,name:playerName(id),avg:Number(avgs[id]||0),owner:currentRosterOwner(id),firstRound:firstRound.has(id)})).filter(x=>x.name&&x.name!=='Unknown player'&&(x.avg>=18||x.firstRound)).sort((a,b)=>b.avg-a.avg)
+function insiderEligibleStars(){
+  const season=String(state.modelBundle?.league?.season||'2026'),avg=seasonAverageMap(season),firstRound=recentFirstRoundDraftMap(),rostered=new Set((state.currentRosters||[]).flatMap(r=>(r.players||[]).map(String))),rows=[];
+  rostered.forEach(id=>{const fpts=Number(avg[id]||0),draft=firstRound.get(String(id));if(fpts>=18||draft)rows.push({id:String(id),name:playerName(id),avg:fpts,draft,owner:currentRosterOwner(id)})});
+  return rows.sort((a,b)=>(b.avg||0)-(a.avg||0));
 }
-function insiderWeaknessStories(rng){
-  const managers=[...state.managers.keys()].map(id=>{const gm=managerGMProfile(String(id));return{id:String(id),name:managerName(String(id)),avatar:state.managers.get(String(id))?.avatar||null,weaknesses:gm?.weaknesses||[],gm}}).filter(x=>x.weaknesses.length);
-  return insiderShuffle(managers,rng).slice(0,4).map(team=>{const weakness=insiderPick(team.weaknesses,rng),headlines=[
-    `${team.name}'s front office has a problem it cannot mute in the group chat`,
-    `League audit finds ${team.name} guilty of “${weakness.toLowerCase()}”`,
-    `${team.name} has a roster problem and unfortunately everyone can see it`,
-    `The spreadsheet has filed a formal complaint against ${team.name}`,
-    `${team.name}'s biggest weakness is becoming everybody else's favourite talking point`
-  ],openers=[
-    `The numbers have identified ${weakness.toLowerCase()} as a genuine pressure point for ${team.name}, which is analytics language for “please stop pretending this is fine.”`,
-    `${team.name} has officially been diagnosed with ${weakness.toLowerCase()}, and rival GMs are expected to show absolutely no compassion whatsoever.`,
-    `A routine front-office inspection has discovered ${weakness.toLowerCase()} at ${team.name}. Sources confirm the problem was hiding in plain sight.`,
-    `The GM profile keeps flashing one warning for ${team.name}: ${weakness.toLowerCase()}. At this point the dashboard is less scouting report and more intervention.`
-  ],closers=[
-    `The fix may be available on the trade market, assuming the rest of the league can stop laughing long enough to answer the phone.`,
-    `There is still time to fix it, but “hoping nobody notices” has now been removed from the list of viable strategies.`,
-    `The good news is that roster construction can change quickly. The bad news is every rival manager now knows exactly where to squeeze.`,
-    `Expect incoming offers to be extremely helpful, completely fair and definitely not designed to exploit this exact weakness.`
-  ];return{kicker:'FRONT OFFICE ROAST',headline:insiderPick(headlines,rng),image:team.avatar,body:`${insiderPick(openers,rng)} ${insiderPick(closers,rng)}`}})
-}
-function insiderPlayerStories(players,rng){
-  return insiderShuffle(players,rng).slice(0,8).map(p=>{const owner=p.owner?managerName(p.owner):'his front office',avg=p.avg>0?p.avg.toFixed(1):null,headlineSets=[
-    `${p.name} is becoming an administrative problem for the rest of IMO`,
-    `Opposing GMs reportedly request investigation into ${p.name} being “too useful”`,
-    `${p.name} continues rude campaign of scoring fantasy points`,
-    `${owner} asked to explain how ${p.name} ended up on the roster`,
-    `League sources confirm ${p.name} remains annoyingly good`,
-    `${p.name} has once again ruined somebody's perfectly reasonable matchup plan`,
-    `IMO rivals discover “just stop ${p.name}” is not a real defensive strategy`,
-    `${p.name}'s trade price now requires several assets and a handwritten apology`
-  ],openers=avg?[
-    `At ${avg} fantasy points per game, ${p.name} has moved beyond “good player” territory and into the much more irritating category of “weekly problem.”`,
-    `${p.name} is averaging ${avg} fantasy points, which has given ${owner} the confidence of a manager who absolutely plans to mention it in every trade negotiation.`,
-    `The season average sits at ${avg}, and rival managers are running out of creative ways to describe how unpleasant that is to play against.`,
-    `${p.name}'s ${avg}-point average is doing serious damage to the league-wide supply of cope.`
+function insiderWeaknessRows(){const out=[];for(const [id] of state.managers){try{const gm=managerGMProfile(String(id));(gm.weaknesses||[]).slice(0,3).forEach((weakness,index)=>out.push({id:String(id),name:managerName(String(id)),weakness,index,gm}))}catch(_){}}return out}
+function insiderWeaknessJoke(weakness,name,rng){
+  const w=String(weakness||'').toLowerCase();
+  const bank=w.includes('future flexibility')||w.includes('draft')?[
+    `${name}'s future pick cupboard currently has the visual appeal of a supermarket shelf five minutes before a cyclone.`,
+    `The long-term plan appears to be simple: hope nobody asks to see the long-term plan.`,
+    `Future flexibility is technically still available, provided the league introduces a buy-now-pay-later option for draft picks.`
+  ]:w.includes('age')||w.includes('old')||w.includes('veteran')?[
+    `The roster has experience, leadership and several players who may remember when DVDs were exciting.`,
+    `The championship window is open, although somebody should probably check whether the hinges still work.`,
+    `Youth development has been postponed until further notice, presumably because the veterans have occupied all the chairs.`
+  ]:w.includes('depth')?[
+    `The top of the roster looks dangerous. The middle currently looks like it has been assembled from the airport lost-and-found.`,
+    `One injury and the depth chart starts asking questions nobody in the front office wants to answer.`,
+    `The stars are doing heavy lifting; the supporting cast has been asked to at least hold the clipboard.`
+  ]:w.includes('trade')||w.includes('asset')?[
+    `The trade calculator has reportedly requested annual leave.`,
+    `League rivals are keeping the phone charged whenever ${name} starts discussing “value”.`,
+    `The asset ledger is less a spreadsheet and more an ongoing investigation.`
+  ]:w.includes('production')||w.includes('difference-maker')?[
+    `There are useful players everywhere, which is a diplomatic way of saying somebody still needs to become terrifying.`,
+    `The roster has plenty of contributors and an urgent vacancy for someone opponents actually lose sleep over.`,
+    `Depth is nice. Weekly nuclear production would be nicer.`
   ]:[
-    `${p.name} arrived through the first round of the rookie draft, meaning patience is technically required even if the group chat has never demonstrated any.`,
-    `As a former first-round rookie selection, ${p.name} remains important enough for every decent game to trigger three trade enquiries and one outrageous valuation.`
-  ],closers=[
-    `For now, the only known counter is to own a better player, which analysts admit is not especially actionable advice.`,
-    `The league will continue monitoring the situation and complaining about it with tremendous professionalism.`,
-    `Any buy-low window appears to have been boarded up, painted over and guarded by ${owner}.`,
-    `Opponents are encouraged to remain calm, set their lineups and then watch the problem happen anyway.`
-  ];return{kicker:p.firstRound?'BLUE-CHIP WATCH':'STAR WATCH',headline:insiderPick(headlineSets,rng),image:insiderPlayerImage(p.id),body:`${insiderPick(openers,rng)} ${insiderPick(closers,rng)}`}})
-}
-function insiderTradeRoastStories(rng){
-  return (state.trades||[]).slice(0,5).map(trade=>{const ids=mids(trade),names=ids.map(id=>managerName(id,trade)),assets=Object.values(tradeAssets(trade)).flat().filter(a=>a.type==='player').sort((a,b)=>Number(b.value||0)-Number(a.value||0)),hero=assets[0];return{kicker:'TRADE DESK',headline:insiderPick([
-    `${names.join(' and ')} complete trade; both immediately claim they won`,
-    `${hero?.name||'Latest trade'} deal sends league economists back to the calculator`,
-    `Another IMO trade has occurred and objectivity has been cancelled`,
-    `${names[0]||'One GM'} hits “accept”; group chat prepares the courtroom`
-  ],rng),image:hero?insiderPlayerImage(hero.id):state.managers.get(String(ids[0]))?.avatar||null,body:insiderPick([
-    `${names.join(' and ')} have completed a deal, triggering the traditional IMO ceremony in which both sides declare victory before anybody involved has played a game. ${hero?.name?`${hero.name} is the biggest name moving, so naturally every other detail will be ignored for at least 24 hours.`:'The packages will now be analysed far beyond what any healthy person would consider necessary.'}`,
-    `The latest transaction between ${names.join(' and ')} is officially on the books. Early reactions range from “interesting” to “what on earth are you doing,” which means consensus has been achieved exactly as expected.`,
-    `${names.join(' and ')} have chosen roster violence. ${hero?.name?`${hero.name} headlines the move, while rival managers begin retroactively claiming they could have offered more.`:'The deal has already produced several confident opinions unsupported by evidence.'}`
-  ],rng)}})
+    `The analytics department has identified the problem. The front office has identified several reasons to ignore it.`,
+    `It is not a crisis, but it has officially progressed beyond “quirky roster construction”.`,
+    `The weakness is now visible enough that rival GMs can probably see it without logging in.`
+  ];return insiderPick(bank,rng)
 }
 function buildInsiderEdition(){
-  const day=new Date(),dayKey=`${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`,eventKey=`${dayKey}|${insiderEventKey()}`,storageKey='imoInsiderEditionV314';
+  const now=new Date(),dayKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`,eventKey=`daily-${dayKey}`,storageKey='imoInsiderEditionV3384Daily';
   try{const cached=JSON.parse(localStorage.getItem(storageKey)||'null');if(cached?.eventKey===eventKey)return cached}catch{}
-  const rng=insiderRng(insiderDailySeed()),players=insiderEligiblePlayers(),pool=[...insiderWeaknessStories(rng),...insiderPlayerStories(players,rng),...insiderTradeRoastStories(rng)];
-  const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.modelBundle,weeks=meaningfulWeeks(current),lastWeek=weeks.at(-1)||0,power=modelRows(state.modelBundle,lastWeek||Infinity,'power');
-  if(power[0]){const leader=power[0];pool.push({kicker:'POWER RANKINGS DEPARTMENT',headline:insiderPick([`${leader.name} sits No. 1 and has become completely unbearable`,`League confirms ${leader.name} is still top; humility remains unavailable`,`Everyone hates the rankings when ${leader.name} is first`],rng),image:state.managers.get(String(leader.id))?.avatar||null,body:insiderPick([`${leader.name} currently owns the No. 1 power ranking, a development the front office has reportedly handled with exactly the amount of restraint you would expect: none. The rest of the league is invited to change the rankings using the controversial method of winning more games.`,`The model still has ${leader.name} at the top of the pile. Rival managers have requested a recount, a new formula and possibly a different sport. Unfortunately, the easiest solution remains beating them.`],rng)})}
-  let stories=insiderShuffle(pool,rng).slice(0,3);
-  while(stories.length<3)stories.push({kicker:'LEAGUE NONSENSE',headline:insiderPick(['Quiet day in IMO lasts nearly seven minutes','League front offices successfully avoid sensible behaviour','Trade machine remains open despite medical advice'],rng),image:null,body:`Week ${lastWeek+1} approaches with every manager convinced their plan is working and several spreadsheets suggesting otherwise. No emergency moves are required yet, which historically means somebody will make one anyway.`});
-  const coming=insiderShuffle([...(players.slice(0,5).map(p=>`${p.name}: superstar, trade chip or weekly public nuisance?`)),...([...state.managers.keys()].slice(0,5).map(id=>`${managerName(id)} front office audit`)),`Week ${lastWeek+1} matchup overreactions`,`The trade market's next completely reasonable asking price`],rng).slice(0,3);
+  const seed=insiderDailySeed(`${dayKey}|${state.league?.league_id||CONFIG.currentLeagueId}`),rng=insiderRng(seed),current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.modelBundle,weeks=meaningfulWeeks(current),lastWeek=weeks.at(-1)||0,power=modelRows(state.modelBundle,lastWeek||Infinity,'power'),stars=insiderEligibleStars(),weaknesses=insiderWeaknessRows(),latest=state.trades[0];
+  const pool=[];
+  insiderShuffle(stars,rng).slice(0,8).forEach(p=>{const owner=p.owner?managerName(p.owner):'an unnamed front office',avg=p.avg>0?p.avg.toFixed(1):'unproven',rookie=p.draft?`a former first-round selection (${p.draft.season} pick ${rookiePickLabel(p.draft)})`:'a certified weekly problem';const headlines=[`${p.name} has become a weekly administrative issue for the rest of IMO`,`${p.name} is putting up numbers that should probably require a permit`,`${owner} would like to remind everyone that ${p.name} is absolutely not available`,`Opposing GMs reportedly tired of seeing ${p.name} in the matchup screen`,`${p.name}'s latest act: making reasonable projections look cowardly`];const bodies=[`At ${avg} FPTS per game, ${p.name} is ${rookie} and currently operating with the subtlety of a fire alarm. ${owner} gets the benefit; everyone else gets to stare at the matchup projection and pretend they are relaxed. The league's official strategy remains “maybe he misses shots eventually”, which is less a plan and more a prayer.`,`There are good fantasy players, and then there are players who make the group chat go suspiciously quiet. ${p.name} is averaging ${avg} FPTS and has reached that second category. ${owner} can call it roster construction. Rival managers may prefer the term competitive nuisance.`,`The numbers say ${avg} FPTS per game. The eye test says “please stop”. ${p.name} continues to turn ordinary matchup weeks into emergency planning meetings, while ${owner} enjoys the deeply irritating luxury of pencilling in elite production before tip-off.`];pool.push({kicker:p.draft?'BLUE-CHIP MENACE':'STAR WATCH',headline:insiderPick(headlines,rng),image:insiderPlayerImage(p.id),body:insiderPick(bodies,rng)});});
+  insiderShuffle(weaknesses,rng).slice(0,8).forEach(w=>{const headlines=[`${w.name}'s front office has one problem it can no longer hide`,`${w.name} receives an unsolicited roster audit and will not enjoy the findings`,`The analytics department has questions for ${w.name}`,`${w.name}'s biggest weakness is becoming everybody else's favourite talking point`];const intros=[`The manager profile has flagged “${w.weakness}”, which is analytics language for “the group chat has material”.`,`IMO's front-office model has circled “${w.weakness}” in red marker, and rival GMs have naturally responded with compassion, maturity and absolutely no screenshots.`,`The numbers have delivered an inconvenient memo to ${w.name}: “${w.weakness}”.`];pool.push({kicker:'FRONT OFFICE ROAST',headline:insiderPick(headlines,rng),image:state.managers.get(w.id)?.avatar||null,body:`${insiderPick(intros,rng)} ${insiderWeaknessJoke(w.weakness,w.name,rng)} The good news is that weaknesses can be fixed. The bad news is that every other manager can now see exactly where to send the trade offer.`});});
+  if(latest){const assets=Object.values(tradeAssets(latest)).flat().filter(a=>a.type==='player'),hero=[...assets].sort((a,b)=>Number(b.value||0)-Number(a.value||0))[0],teams=mids(latest).map(id=>managerName(id,latest));const tradeHeads=[`${teams.join(' and ')} have once again chosen chaos`,`Latest trade confirms nobody in IMO knows how to leave the roster alone`,`${hero?.name||'The latest deal'} lands in a trade that will definitely be remembered accurately by both sides`];pool.push({kicker:'TRADE DESK',headline:insiderPick(tradeHeads,rng),image:hero?insiderPlayerImage(hero.id):null,body:`${teams.join(' and ')} completed the latest transaction, ensuring at least one manager will describe it as “obvious value” and the other will claim it was “always about roster fit”. ${hero?.name?`${hero.name} supplies the headline value, but the real entertainment begins when the first bad week arrives and everyone starts victory-lapping the trade grade.`:'The league has already begun the completely impartial process of deciding who got robbed.'}`});}
+  power.slice(0,4).forEach((team,index)=>{const heads=[`${team.name} sits #${team.rank} and is becoming annoyingly difficult to dismiss`,`${team.name}'s power ranking is starting to look less like a hot take`,`The model keeps rating ${team.name}; rival managers keep requesting a recount`];pool.push({kicker:index===0?'POWER LEADER':'POWER DESK',headline:insiderPick(heads,rng),image:state.managers.get(String(team.id))?.avatar||null,body:`${team.name} currently owns the #${team.rank} spot in the Power Rankings. At this point the model has produced enough evidence that calling it a fluke requires increasingly creative accounting. The next matchup can change the picture, but for today the rest of the league has been invited to cope responsibly.`});});
+  const unique=[],seen=new Set();for(const story of insiderShuffle(pool,rng)){const key=story.headline;if(seen.has(key))continue;seen.add(key);unique.push(story);if(unique.length===3)break}
+  while(unique.length<3)unique.push({kicker:'LEAGUE DESK',headline:'IMO Dynasty remains completely normal for another 24 hours',image:null,body:`No front office has admitted panic, no manager has admitted overpaying, and everybody remains convinced their roster is one move away. This is almost certainly all true. Check back tomorrow for a fresh set of allegations.`});
+  const coming=insiderShuffle([stars[0]?`${stars[0].name}: superstar or public nuisance?`:'The league’s next breakout target','A completely unnecessary audit of somebody’s draft capital','Which contender is one injury away from a group-chat disappearance?','The trade market: who is bluffing and who has already opened the calculator?','Another front office weakness gets dragged into daylight'],rng).slice(0,3);
   let issue=1;try{const prev=JSON.parse(localStorage.getItem(storageKey)||'null');issue=(prev?.issue||0)+1}catch{}
-  const edition={eventKey,issue,date:new Date().toISOString(),stories,coming};try{localStorage.setItem(storageKey,JSON.stringify(edition));localStorage.setItem('imoMarketSnapshotV1',JSON.stringify(marketSnapshot()))}catch{}return edition
+  const edition={eventKey,issue,date:new Date().toISOString(),stories:unique,coming};try{localStorage.setItem(storageKey,JSON.stringify(edition));localStorage.setItem('imoMarketSnapshotV1',JSON.stringify(marketSnapshot()))}catch{}return edition;
 }
-
 function renderHeadlines(){const root=$('headlinesContent');if(!root)return;const ed=buildInsiderEdition();root.innerHTML=`<header class="insider-header"><div><span class="insider-brand"><img src="assets/imo-insider.svg" alt=""><span><b>IMO INSIDER</b><small>DAILY LEAGUE EDITION</small></span></span><h2 id="headlinesTitle">News</h2><p>${fmt(new Date(ed.date).getTime())} · Issue #${String(ed.issue).padStart(3,'0')}</p></div><span class="insider-live">LATEST EDITION</span></header><div class="insider-stories">${ed.stories.map((story,i)=>`<article class="insider-story">${story.image?`<div class="insider-image"><img src="${esc(story.image)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></div>`:''}<div class="insider-copy"><span>${esc(story.kicker)}</span><h3>${esc(story.headline)}</h3><p>${esc(story.body)}</p></div></article>`).join('')}</div><aside class="coming-tomorrow"><span>COMING TOMORROW</span><ul>${ed.coming.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></aside>`}
 function openHeadlines(){renderHeadlines();const modal=$('headlinesModal');modal?.classList.add('open');modal?.setAttribute('aria-hidden','false');document.body.classList.add('headlines-open')}
 function closeHeadlines(){const modal=$('headlinesModal');modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('headlines-open')}
@@ -2645,7 +2775,7 @@ const HUB_RENDERERS={
   'league records':renderRecords,
   'most traded players':renderBlock,
   'most waived players':renderWaivedBlock,
-  'biggest trades':renderBiggestTrades
+  'biggest trades':renderBiggestTrades,
 };
 const HUB_CHANGESETS={
   core:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
@@ -3382,6 +3512,8 @@ document.addEventListener("pointerup",e=>{
 });
 
 document.addEventListener("click",e=>{
+  const hubNav=e.target.closest?.(".hub-nav-menu");
+  if(hubNav&&!e.target.closest(".hub-nav-trigger")){setTimeout(()=>{hubNav.open=false},0)}
   if(e.target.closest("#globalSearchBtn")){openGlobalSearch();return}
   if(e.target.closest("[data-close-global-search]")||e.target.closest("#globalSearchClose")){closeGlobalSearch();return}
   if(e.target.closest("[data-global-search-back]")){renderGlobalSearchResults($("globalSearchInput")?.value||"");return}

@@ -5,26 +5,32 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="IMO Dynasty">
-<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png?v=3.3.58">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png?v=3.3.58">
-<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png?v=3.3.58">
-<link rel="icon" href="favicon.ico?v=3.3.58">
-<link rel="manifest" href="site.webmanifest?v=3.3.58">
-<link rel="shortcut icon" href="favicon.ico?v=3.3.58">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png?v=3.4.1">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png?v=3.4.1">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png?v=3.4.1">
+<link rel="icon" href="favicon.ico?v=3.4.1">
+<link rel="manifest" href="site.webmanifest?v=3.4.1">
+<link rel="shortcut icon" href="favicon.ico?v=3.4.1">
 <title>IMO DYNASTY</title>
 <link rel="stylesheet" href="styles.css?v=3.4.0">
 </head><body><div class="noise"></div>
 <header class="site-header v26-header">
   <div class="brand v26-brand">
-    <div class="logo v26-logo brand-mark"><img src="assets/imo-dynasty-mark.svg" alt="IMO Dynasty"></div>
+    <div class="logo v26-logo brand-mark"><img src="assets/imo-dynasty-mark.svg?v=3.4.1" alt="IMO Dynasty"></div>
     <div class="v26-brand-copy"><span class="eyebrow">LIVE LEAGUE HQ</span><h1>IMO DYNASTY</h1><p>Your home for all things IMO Dynasty</p></div>
   </div>
   <div class="header-actions v26-header-actions">
     <span id="statusText">Connecting…</span>
     <button id="globalSearchBtn" class="global-search-launch" type="button" aria-label="Search IMO Hub" title="Search IMO Hub"><span aria-hidden="true">⌕</span><small>Search</small></button>
-    <button id="managerDirectoryBtn" class="v26-manager-btn branded-action" type="button"><img src="assets/manager-profiles.svg" alt="">Managers</button>
-    <button id="headlinesBtn" class="headlines-btn branded-action" type="button"><img src="assets/imo-insider.svg" alt="">News</button>
-    <button id="mockDraftBtn" class="v26-manager-btn branded-action mock-draft-launch" type="button">27 Mock Draft</button>
+    <details class="hub-nav-menu">
+      <summary class="hub-nav-trigger" aria-label="Open IMO Hub menu"><span aria-hidden="true">☰</span><small>League</small></summary>
+      <div class="hub-nav-popover">
+        <button id="headlinesBtn" class="hub-nav-item" type="button"><img src="assets/imo-insider.svg" alt=""><span><strong>News</strong><small>IMO Insider</small></span></button>
+        <button id="managerDirectoryBtn" class="hub-nav-item" type="button"><img src="assets/manager-profiles.svg" alt=""><span><strong>Managers</strong><small>Team HQs</small></span></button>
+        <button id="mockDraftBtn" class="hub-nav-item" type="button"><span class="hub-nav-glyph" aria-hidden="true">27</span><span><strong>27 Mock Draft</strong><small>Draft Room</small></span></button>
+        <a class="hub-nav-item" href="https://imodynasty.github.io/bigboard/" aria-label="Open Your Big Board"><span class="hub-nav-glyph" aria-hidden="true">☷</span><span><strong>Your Big Board</strong><small>Personal rankings</small></span></a>
+      </div>
+    </details>
   </div>
 </header>
 <div id="leagueTicker" class="league-ticker" aria-label="Latest IMO Dynasty headlines" hidden></div>
@@ -145,5 +151,5 @@
     <div id="playerHistoryContent" class="player-history-content"></div>
   </section>
 </div>
-<footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V3.4.0 · Not affiliated with Sleeper</span></footer>
+<footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V3.3.80 · Not affiliated with Sleeper</span></footer>
 <script src="app.js?v=3.4.0"></script></body></html>
