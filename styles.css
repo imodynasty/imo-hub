@@ -2552,3 +2552,37 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 .physical-award--bronze .award-engraving{border-color:#c77b57;background:linear-gradient(180deg,#8c4c31,#2c1710);color:#ffd8c4}
 .award-mark--small{font-size:11px;letter-spacing:1px}
 .award-mark--score{font-size:11px;letter-spacing:1.5px}
+
+/* V3.5.2 — Manager Profile Team Chemistry */
+.team-chemistry-card{grid-column:1/-1;overflow:hidden}
+.team-chemistry-heading{align-items:flex-start;gap:18px}
+.team-chemistry-heading p{margin:5px 0 0;max-width:670px;color:var(--muted);font-size:10px;line-height:1.5}
+.team-chemistry-toggle{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.team-chemistry-toggle button{border:1px solid var(--line);background:#0a0e15;color:var(--muted);padding:7px 10px;border-radius:999px;font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;cursor:pointer}
+.team-chemistry-toggle button.active{border-color:rgba(0,229,255,.55);background:rgba(0,229,255,.12);color:#dffcff;box-shadow:inset 0 0 0 1px rgba(0,229,255,.08)}
+.team-chemistry-summary{display:grid;grid-template-columns:auto auto 1fr;align-items:end;gap:10px 14px;margin:2px 0 12px;padding:12px 14px;border:1px solid rgba(0,229,255,.16);border-radius:12px;background:linear-gradient(90deg,rgba(0,229,255,.07),rgba(255,46,76,.025) 58%,rgba(5,9,14,.22))}
+.team-chemistry-summary>span{font-size:8px;font-weight:950;letter-spacing:.12em;color:#84eefb}
+.team-chemistry-summary>strong{font-size:25px;line-height:1;color:var(--text);font-variant-numeric:tabular-nums}
+.team-chemistry-summary>small{justify-self:end;color:var(--muted);font-size:9px}
+.team-chemistry-table{display:grid;gap:6px}
+.team-chemistry-columns{display:grid;grid-template-columns:minmax(240px,1fr) 210px 125px;gap:12px;padding:0 12px 5px 82px;color:var(--muted);font-size:7px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}
+.team-chemistry-columns span:nth-child(2),.team-chemistry-columns span:nth-child(3){text-align:right}
+.team-chemistry-row{display:grid;grid-template-columns:28px 42px minmax(180px,1fr) 210px 125px;gap:10px;align-items:center;padding:10px 12px;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:linear-gradient(90deg,rgba(255,255,255,.025),rgba(255,255,255,.012));transition:border-color .16s ease,transform .16s ease,background .16s ease}
+@media(hover:hover){.team-chemistry-row:hover{transform:translateY(-1px);border-color:rgba(0,229,255,.22);background:linear-gradient(90deg,rgba(0,229,255,.045),rgba(255,255,255,.015))}}
+.team-chemistry-rank{font-size:11px;font-weight:950;color:var(--muted);text-align:center}
+.team-chemistry-avatar{width:38px;height:38px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.11);background:#0b1018;display:grid;place-items:center;font-size:9px;font-weight:900;color:var(--muted)}
+.team-chemistry-avatar img{width:100%;height:100%;object-fit:cover;display:block}.team-chemistry-avatar>span{display:none}
+.team-chemistry-player{min-width:0}.team-chemistry-player>a{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:900;color:var(--text);text-decoration:none}.team-chemistry-player small{display:block;margin-top:3px;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.04em}
+.team-chemistry-score{text-align:right;min-width:0}.team-chemistry-score>strong{display:block;font-size:18px;line-height:1;font-variant-numeric:tabular-nums}.chemistry-tag{display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:5px;font-size:7px;font-weight:950;letter-spacing:.06em;white-space:nowrap}.chemistry-tag.sync{color:#7ff6b2}.chemistry-tag.good{color:#9beef7}.chemistry-tag.out{color:#ffc36b}.chemistry-tag.culture{color:#ff6d83}.chemistry-tag.new{color:#aab2c0}
+.team-chemistry-perfect{text-align:right}.team-chemistry-perfect strong{display:block;font-size:14px;font-variant-numeric:tabular-nums}.team-chemistry-perfect small{display:block;margin-top:3px;color:var(--muted);font-size:7px;font-weight:900;letter-spacing:.05em}
+.team-chemistry-empty{padding:24px 16px;border:1px dashed rgba(255,255,255,.12);border-radius:12px;text-align:center;color:var(--muted)}.team-chemistry-empty strong,.team-chemistry-empty small{display:block}.team-chemistry-empty strong{color:var(--text);font-size:11px}.team-chemistry-empty small{margin-top:5px;font-size:9px}
+@media(max-width:760px){
+  .team-chemistry-heading{flex-direction:column}.team-chemistry-toggle{justify-content:flex-start;width:100%}.team-chemistry-toggle button{flex:1}
+  .team-chemistry-summary{grid-template-columns:1fr auto;align-items:center}.team-chemistry-summary>small{grid-column:1/-1;justify-self:start}
+  .team-chemistry-columns{grid-template-columns:minmax(0,1fr) 104px 66px;padding:0 6px 4px 0;gap:7px}.team-chemistry-columns span:nth-child(1){padding-left:72px}
+  .team-chemistry-row{grid-template-columns:22px 36px minmax(0,1fr) 104px 66px;gap:6px;padding:9px 6px}.team-chemistry-avatar{width:34px;height:34px;border-radius:9px}.team-chemistry-player>a{font-size:11px}.team-chemistry-player small{font-size:7px}.team-chemistry-score>strong{font-size:15px}.chemistry-tag{font-size:6px;white-space:normal;line-height:1.2;text-align:right}.team-chemistry-perfect strong{font-size:12px}.team-chemistry-perfect small{font-size:6px}
+}
+@media(max-width:430px){
+  .team-chemistry-columns{grid-template-columns:minmax(0,1fr) 91px 54px}.team-chemistry-columns span:nth-child(1){padding-left:58px}.team-chemistry-columns span:nth-child(3){font-size:0}.team-chemistry-columns span:nth-child(3)::after{content:'PERFECT';font-size:7px}
+  .team-chemistry-row{grid-template-columns:18px 32px minmax(0,1fr) 91px 54px;gap:5px}.team-chemistry-rank{font-size:9px}.team-chemistry-avatar{width:30px;height:30px}.team-chemistry-score>strong{font-size:14px}.team-chemistry-perfect small{display:none}
+}

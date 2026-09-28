@@ -19,7 +19,7 @@ const CANONICAL_DRAFT_COLUMNS={
 function normaliseTeamKey(name){return String(name||"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 function canonicalDraftSlot(season,teamName){return CANONICAL_DRAFT_COLUMNS[String(season)]?.[normaliseTeamKey(teamName)]??null}
 
-const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,h2hProjections:{},h2hProjectionKey:"",h2hProjectionLoading:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
+const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",profileChemistryView:"season",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,h2hProjections:{},h2hProjectionKey:"",h2hProjectionLoading:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
 const $=id=>document.getElementById(id),WL={"14":"14 days","28":"28 days","season":"2026 season","all":"All time"};
 try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key&&key.startsWith('imo-profile-'))sessionStorage.removeItem(key)}}catch(_){ }
 function resetComputedCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerTrades.clear();state.computedCache.tradeSide.clear();state.computedCache.completedMatchups.clear();state.computedCache.tendencyLeague=null;state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
@@ -1492,6 +1492,79 @@ function closeCabinetPopovers(except=null){document.querySelectorAll('.physical-
 function toggleCabinetAward(card){if(!card)return;const opening=!card.classList.contains('is-open');closeCabinetPopovers(card);card.classList.toggle('is-open',opening);card.querySelector('.cabinet-award-button')?.setAttribute('aria-expanded',opening?'true':'false')}
 document.addEventListener('click',event=>{const button=event.target.closest('.cabinet-award-button');if(button){event.preventDefault();event.stopPropagation();toggleCabinetAward(button.closest('.physical-award'));return}if(!event.target.closest('.physical-award'))closeCabinetPopovers()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeCabinetPopovers();if((event.key==='Enter'||event.key===' ')&&event.target.matches('.physical-award')){event.preventDefault();toggleCabinetAward(event.target)}});
+
+function chemistryStatus(chemistry,starts){
+  const pct=Number(chemistry)||0,n=Number(starts)||0;
+  if(n<3)return{label:'NEW CONNECTION',icon:'🆕',className:'new'};
+  if(pct>=90)return{label:'IN SYNC',icon:'🔥',className:'sync'};
+  if(pct>=75)return{label:'GOOD CHEMISTRY',icon:'🤝',className:'good'};
+  if(pct>=60)return{label:'OUT OF SYNC',icon:'⚠️',className:'out'};
+  return{label:'CULTURE PROBLEM',icon:'☣️',className:'culture'};
+}
+function chemistryCurrentSeason(){return String(currentBundle()?.league?.season||state.modelBundle?.league?.season||'2026')}
+function chemistryGameDateValue(row){
+  const raw=row?.date??row?.game_date??row?.gameDate??row?.start_time??row?.startTime??row?.timestamp??row?.game_time;
+  if(raw===null||raw===undefined||raw==='')return null;
+  let d=null;
+  if(typeof raw==='number'||/^\d{10,13}$/.test(String(raw))){const n=Number(raw);d=new Date(n<1e12?n*1000:n)}else d=new Date(raw);
+  return d&&!Number.isNaN(d.getTime())?d:null;
+}
+function chemistryDirectWeek(row){
+  for(const key of ['week','fantasy_week','fantasyWeek','week_num','week_number','matchup_week']){const n=Number(row?.[key]);if(Number.isFinite(n)&&n>0)return n}
+  return null;
+}
+function chemistrySeasonAnchor(season){
+  let earliest=null;
+  Object.values(state.gameLogs?.[String(season)]||{}).forEach(rows=>safeArray(rows).forEach(row=>{if(!gameWasPlayed(row))return;const d=chemistryGameDateValue(row);if(d&&(!earliest||d<earliest))earliest=d}));
+  if(!earliest)return null;
+  const anchor=new Date(earliest);const day=anchor.getUTCDay();const diff=(day+6)%7;anchor.setUTCHours(0,0,0,0);anchor.setUTCDate(anchor.getUTCDate()-diff);return anchor;
+}
+function chemistryWeekForGame(row,season,anchor=null){
+  const direct=chemistryDirectWeek(row);if(direct)return direct;
+  const d=chemistryGameDateValue(row),base=anchor||chemistrySeasonAnchor(season);if(!d||!base)return null;
+  return Math.floor((d.getTime()-base.getTime())/(7*864e5))+1;
+}
+function chemistryRowsForPlayerWeek(playerId,season,week,scoring,anchor=null){
+  const rows=safeArray(state.gameLogs?.[String(season)]?.[String(playerId)]),directRows=rows.filter(row=>chemistryDirectWeek(row)!==null),pool=directRows.length?directRows.filter(row=>Number(chemistryDirectWeek(row))===Number(week)):rows.filter(row=>Number(chemistryWeekForGame(row,season,anchor))===Number(week));
+  return pool.filter(gameWasPlayed).map(row=>({row,fpts:rawFantasyPoints(row,scoring)})).filter(x=>Number.isFinite(Number(x.fpts)));
+}
+function chemistrySeasonPlayerRows(managerId,season){
+  const id=String(managerId),bundle=bundleForSeason(season);if(!bundle)return[];
+  const currentIds=new Set(safeArray(state.managers.get(id)?.roster?.players).map(String));if(!currentIds.size)return[];
+  const scoring=bundle.league?.scoring_settings||{},anchor=chemistrySeasonAnchor(season),byPlayer=new Map();
+  const sportSeason=String(state.sportState?.season||''),sportWeek=Number(state.sportState?.week)||0,isLiveSeason=String(season)===sportSeason;
+  safeArray(bundle.matchups).forEach(row=>{
+    const owner=String(bundle.ownerByRoster?.[String(row.roster_id)]||'');if(owner!==id)return;
+    const week=Number(row.week)||0;if(!week||(isLiveSeason&&sportWeek>0&&week>=sportWeek))return;
+    const starters=safeArray(row.starters).map(String);if(!starters.length)return;
+    starters.forEach(pid=>{
+      if(!currentIds.has(pid))return;
+      const selected=Number(row.players_points?.[pid]);if(!Number.isFinite(selected))return;
+      const games=chemistryRowsForPlayerWeek(pid,season,week,scoring,anchor);if(!games.length)return;
+      const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!Number.isFinite(best)||best<=0)return;
+      const existing=byPlayer.get(pid)||{id:pid,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};
+      existing.captured+=selected;existing.available+=best;existing.starts+=1;existing.seasons.add(String(season));if(Math.abs(selected-best)<0.05)existing.perfect+=1;byPlayer.set(pid,existing);
+    });
+  });
+  return [...byPlayer.values()].map(x=>({...x,chemistry:x.available>0?Math.max(0,Math.min(100,x.captured/x.available*100)):0}));
+}
+function managerTeamChemistryRows(managerId,view=state.profileChemistryView){
+  const id=String(managerId),seasons=view==='all'?[...new Set(state.bundles.map(b=>String(b.league?.season||'')).filter(Boolean))]:[chemistryCurrentSeason()],merged=new Map();
+  seasons.forEach(season=>chemistrySeasonPlayerRows(id,season).forEach(row=>{const x=merged.get(row.id)||{id:row.id,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};x.captured+=row.captured;x.available+=row.available;x.starts+=row.starts;x.perfect+=row.perfect;row.seasons.forEach(y=>x.seasons.add(y));merged.set(row.id,x)}));
+  return [...merged.values()].map(x=>({...x,chemistry:x.available>0?Math.max(0,Math.min(100,x.captured/x.available*100)):0})).filter(x=>x.starts>0).sort((a,b)=>b.chemistry-a.chemistry||b.starts-a.starts||playerName(a.id).localeCompare(playerName(b.id)));
+}
+function teamChemistryHTML(managerId){
+  const id=String(managerId),view=state.profileChemistryView==='all'?'all':'season',rows=managerTeamChemistryRows(id,view),teamCaptured=rows.reduce((s,x)=>s+x.captured,0),teamAvailable=rows.reduce((s,x)=>s+x.available,0),teamPct=teamAvailable>0?teamCaptured/teamAvailable*100:null;
+  const table=rows.map((row,index)=>{const status=chemistryStatus(row.chemistry,row.starts),name=playerName(row.id),player=state.players?.[String(row.id)]||{},avatar=`https://sleepercdn.com/content/nba/players/${row.id}.jpg`;return `<div class="team-chemistry-row chemistry-${status.className}"><span class="team-chemistry-rank">${index+1}</span><span class="team-chemistry-avatar"><img src="${esc(avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span>${esc(name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''))}</span></span><div class="team-chemistry-player">${playerLink(row.id,name,'profile-player-name')}<small>${row.starts} ${row.starts===1?'START':'STARTS'}${player.position?` · ${esc(player.position)}`:''}</small></div><div class="team-chemistry-score"><strong>${row.chemistry.toFixed(1)}%</strong><span class="chemistry-tag ${status.className}">${status.icon} ${status.label}</span></div><div class="team-chemistry-perfect"><strong>${row.perfect}/${row.starts}</strong><small>PERFECT PICKS</small></div></div>`}).join('');
+  const empty=view==='all'?'No qualifying starts found across this manager\'s loaded IMO seasons.':'Team Chemistry will appear after this manager has completed lineup selections this season.';
+  return `<section class="manager-profile-card team-chemistry-card" data-team-chemistry><div class="manager-profile-card-heading team-chemistry-heading"><div><span class="eyebrow">LINEUP DECISION-MAKING</span><h3>Team Chemistry</h3><p>Ranks current-roster players by how much of their best weekly game you captured when starting them.</p></div><div class="team-chemistry-toggle" role="group" aria-label="Team Chemistry timeframe"><button type="button" class="${view==='season'?'active':''}" data-chemistry-view="season">This Season</button><button type="button" class="${view==='all'?'active':''}" data-chemistry-view="all">All-Time</button></div></div>${teamPct!==null?`<div class="team-chemistry-summary"><span>ROSTER CHEMISTRY</span><strong>${teamPct.toFixed(1)}%</strong><small>${rows.length} active connection${rows.length===1?'':'s'} · minimum 3 starts for a chemistry tag</small></div>`:''}<div class="team-chemistry-table"><div class="team-chemistry-columns"><span>PLAYER</span><span>CHEMISTRY</span><span>PERFECT PICKS</span></div>${table||`<div class="team-chemistry-empty"><strong>${esc(empty)}</strong><small>Only players currently on the roster and previously started by this manager are included.</small></div>`}</div></section>`;
+}
+async function ensureManagerChemistryGameLogs(managerId,view='season'){
+  const id=String(managerId),rosterIds=safeArray(state.managers.get(id)?.roster?.players).map(String);if(!rosterIds.length)return;
+  const seasons=view==='all'?[...new Set(state.bundles.map(b=>String(b.league?.season||'')).filter(Boolean))]:[chemistryCurrentSeason()];
+  for(const season of seasons){const bundle=bundleForSeason(season);if(!bundle)continue;const scoring=bundle.league?.scoring_settings||{};state.gameLogs[season]??={};const missing=rosterIds.filter(pid=>!Array.isArray(state.gameLogs[season]?.[pid])||!state.gameLogs[season][pid].length);if(!missing.length)continue;const rows=await limitedMap(missing,5,async pid=>{try{const result=await loadPlayerGameLogAverage(pid,season,scoring);return result?{id:pid,...result}:null}catch(error){console.warn('Team Chemistry game log unavailable',pid,season,error);return null}});rows.filter(Boolean).forEach(row=>state.gameLogs[season][row.id]=row.rows||[])}
+}
+
 function allNBAEligible(id){const season=state.profileAverageSeason==="2026"?"2026":"2025",avg=seasonAverageMap(season),top50=new Set(Object.entries(avg).filter(([,v])=>Number(v)>0).sort((a,b)=>b[1]-a[1]).slice(0,50).map(([pid])=>String(pid)));return managerRosterPlayers(id,season).filter(p=>top50.has(String(p.id)))}
 function badgeIconsHTML(badges){return badges.map(b=>`<details class="profile-badge-pop"><summary title="${esc(b.name)}">${b.icon}</summary><div><strong>${esc(b.name)}</strong><small>${esc(b.copy)}</small></div></details>`).join("")}
 function playerFormMini(rows,positive){return rows.length?rows.map(x=>`<div class="profile-form-player">${playerLink(x.id,x.name)}<span class="form-change ${positive?'positive':'negative'}">${x.change>0?'+':''}${x.change.toFixed(1)} <i aria-hidden="true">${positive?'↑':'↓'}</i></span><small>${x.priorAvg.toFixed(1)} → ${x.recentAvg.toFixed(1)}</small></div>`).join(""):'<div class="profile-empty">No qualifying players.</div>'}
@@ -2092,12 +2165,11 @@ function managerProfileOverviewPanelHTML(managerId){
   return `<section class="manager-profile-tab-panel active" data-manager-tab-panel="overview">${statGrid}<div class="manager-profile-grid">${gmProfileHTML(gm)}<section class="manager-profile-card profile-form-guide-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">FORM GUIDE</span><h3>Last Five</h3></div></div><div class="profile-form-strip interactive">${formPills}</div></section><section class="manager-profile-card profile-power-trend-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">SEASON JOURNEY</span><h3>Power Ranking Trend</h3></div><span class="period-pill">Week by week</span></div>${powerTrendHTML(id)}</section></div></section>`
 }
 function managerProfileRosterPanelHTML(managerId){
-  const id=String(managerId),roster=managerRosterPlayers(id,state.profileAverageSeason),teamForm=teamFormPlayers(id),eligible=allNBAEligible(id),perMinuteMonsters=managerPerMinuteMonstersHTML(id,state.profileAverageSeason);
+  const id=String(managerId),roster=managerRosterPlayers(id,state.profileAverageSeason),teamForm=teamFormPlayers(id),perMinuteMonsters=managerPerMinuteMonstersHTML(id,state.profileAverageSeason);
   const rosterRow=(p,i)=>`<div class="profile-roster-row"><span class="profile-roster-rank">${i+1}</span><span class="player-avatar-wrap"><img src="${esc(p.avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="player-avatar-fallback">${esc(p.name.split(/\s+/).map(x=>x[0]).slice(0,2).join(""))}</span></span><div>${playerLink(p.id,p.name,"profile-player-name")}<small>${esc(p.position)}${p.age?` · Age ${p.age}`:""}</small></div><b class="profile-player-average">${p.avg.toFixed(2)}${p.avgRank?` <small>#${p.avgRank}</small>`:""}</b></div>`;
   const topRoster=roster.slice(0,10).map(rosterRow).join(""),remainingRoster=roster.slice(10).map((p,i)=>rosterRow(p,i+10)).join("");
   const rosterRows=topRoster+(remainingRoster?`<details class="profile-roster-more"><summary><span class="profile-roster-expand-label">Show remaining ${roster.length-10} players</span><span class="profile-roster-collapse-label">Show top 10</span></summary><div class="profile-roster-list">${remainingRoster}</div></details>`:'')||'<div class="profile-empty">No current roster data.</div>';
-  const eligibleRows=eligible.map(p=>`<div class="eligible-player">${playerLink(p.id,p.name)}<span>${p.avg.toFixed(2)}</span></div>`).join("")||'<div class="profile-empty">No current top-50 players.</div>';
-  return `<section class="manager-profile-tab-panel" data-manager-tab-panel="roster"><div class="manager-profile-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster</h3></div><div class="roster-season-toggle"><button type="button" class="${state.profileAverageSeason==="2025"?"active":""}" data-profile-season="2025">2025 averages</button><button type="button" class="${state.profileAverageSeason==="2026"?"active":""}" data-profile-season="2026">2026 season averages</button></div></div><div class="profile-roster-list">${rosterRows}</div></section>${managerDraftPicksHTML(id)}<section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Poor Form</h3></div></div>${playerFormMini(teamForm.poor,false)}</section><section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Good Form</h3></div></div>${playerFormMini(teamForm.good,true)}</section>${perMinuteMonsters}<section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">ALL-NBA BALLOT</span><h3>Eligible Players</h3></div><span class="period-pill">Top 50 average</span></div><div class="eligible-player-list">${eligibleRows}</div></section></div></section>`
+  return `<section class="manager-profile-tab-panel" data-manager-tab-panel="roster"><div class="manager-profile-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster</h3></div><div class="roster-season-toggle"><button type="button" class="${state.profileAverageSeason==="2025"?"active":""}" data-profile-season="2025">2025 averages</button><button type="button" class="${state.profileAverageSeason==="2026"?"active":""}" data-profile-season="2026">2026 season averages</button></div></div><div class="profile-roster-list">${rosterRows}</div></section>${managerDraftPicksHTML(id)}<section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Poor Form</h3></div></div>${playerFormMini(teamForm.poor,false)}</section><section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Good Form</h3></div></div>${playerFormMini(teamForm.good,true)}</section>${perMinuteMonsters}${teamChemistryHTML(id)}</div></section>`
 }
 function managerProfileFrontOfficePanelHTML(managerId){
   const id=String(managerId),trades=managerTrades(id),recent=trades.slice(0,5),partners=favouriteTradePartners(id),gm=managerGMProfile(id),managerGrades=managerGradesHTML(id),tradeLedger=managerTradeLedgerHTML(id),potentialTradeTargets=potentialTradeTargetsHTML(id,gm),rookieDraftTargets=rookieDraftTargetsHTML(id);
@@ -2364,9 +2436,9 @@ function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
   return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
 }
-function managerProfileSessionKey(key){return `imo-profile-v350-session|${key}`}
-function managerProfilePersistentKey(key){return `imo-profile-v350-persistent|${key}`}
-function managerProfileTabPersistentKey(managerId,tab){return `imo-profile-tab-v350|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}`}
+function managerProfileSessionKey(key){return `imo-profile-v352-session|${key}`}
+function managerProfilePersistentKey(key){return `imo-profile-v352-persistent|${key}`}
+function managerProfileTabPersistentKey(managerId,tab){const isRoster=String(tab)==='roster',chemistry=isRoster?`|chem-${String(state.profileChemistryView||'season')}|cw-${String(state.sportState?.season||'')}-${Number(state.sportState?.week)||0}`:'';return `imo-profile-tab-v352|${String(managerId)}|${String(state.profileAverageSeason||'')}|${String(tab)}${chemistry}`}
 function readManagerProfileTabCache(managerId,tab){
   if(String(tab)==='history')return null;
   try{
@@ -2454,7 +2526,7 @@ function managerProfileFastHTML(managerId){
 function hydrateManagerProfileSection(managerId,tab){
   const id=String(managerId||''),section=String(tab||'overview'),season=String(state.profileAverageSeason||'2026'),key=managerProfileCacheKey(id),rosterIds=safeArray(state.managers.get(id)?.roster?.players).map(String);
   const jobs=[];
-  if(section==='roster'){jobs.push(ensurePlayerEfficiencyData(rosterIds,season));jobs.push(ensureManagerRosterGameLogs(id))}
+  if(section==='roster'){jobs.push(ensurePlayerEfficiencyData(rosterIds,season));jobs.push(ensureManagerRosterGameLogs(id).then(()=>ensureManagerChemistryGameLogs(id,state.profileChemistryView)))}
   if(!jobs.length)return;
   const hydrationKey=`hydrate|${id}|${season}|${section}`;
   if(state.profileBuilds.has(hydrationKey))return;
@@ -2469,7 +2541,7 @@ function buildManagerProfileTab(managerId,tab){
   if(state.profileBuilds.has(cacheKey))return state.profileBuilds.get(cacheKey);
   const priority=state.profilePriorityPromise||Promise.resolve();
   const historyNeed=section==='history'?ensureOlderHistoryLoaded():Promise.resolve();
-  const rosterNeed=section==='roster'?Promise.allSettled([ensurePlayerEfficiencyData(safeArray(state.managers.get(id)?.roster?.players).map(String),String(state.profileAverageSeason||'2026')),ensureManagerRosterGameLogs(id)]):Promise.resolve();
+  const rosterNeed=section==='roster'?(state.profileChemistryView==='all'?ensureOlderHistoryLoaded().then(()=>Promise.allSettled([ensurePlayerEfficiencyData(safeArray(state.managers.get(id)?.roster?.players).map(String),String(state.profileAverageSeason||'2026')),ensureManagerRosterGameLogs(id).then(()=>ensureManagerChemistryGameLogs(id,'all'))])):Promise.allSettled([ensurePlayerEfficiencyData(safeArray(state.managers.get(id)?.roster?.players).map(String),String(state.profileAverageSeason||'2026')),ensureManagerRosterGameLogs(id).then(()=>ensureManagerChemistryGameLogs(id,'season'))])):Promise.resolve();
   const build=Promise.allSettled([priority,historyNeed,rosterNeed]).then(()=>new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{try{const html=managerProfileTabPanelHTML(id,section);writeManagerProfileTabCache(id,section,html);resolve(html)}catch(error){reject(error)}},0)))).finally(()=>state.profileBuilds.delete(cacheKey));
   state.profileBuilds.set(cacheKey,build);return build
 }
@@ -3677,6 +3749,10 @@ document.addEventListener("click",e=>{
   if(e.target.closest("[data-close-manager-directory]")||e.target.closest("#managerDirectoryClose")){closeManagerDirectory();return}
   const ledgerToggle=e.target.closest('[data-manager-ledger-toggle]');if(ledgerToggle){const column=ledgerToggle.closest('.manager-ledger-column'),extras=column?Array.from(column.querySelectorAll('.manager-ledger-item-wrap.is-extra')):[];if(column&&extras.length){const expanded=column.classList.toggle('expanded');ledgerToggle.setAttribute('aria-expanded',expanded?'true':'false');ledgerToggle.textContent=managerTradeLedgerToggleLabel(extras.length,expanded)}return}
   const managerTabBtn=e.target.closest('[data-manager-tab]');if(managerTabBtn){const tab=managerTabBtn.dataset.managerTab,id=$('managerProfileModal')?.dataset.managerId;if(id&&tab!=='overview'&&!$('managerProfileContent')?.querySelector(`[data-manager-tab-panel="${tab}"]`)){ensureManagerFullProfileForTab(id,tab);return}setManagerProfileTab(tab,true);return}
+  const chemistryBtn=e.target.closest('[data-chemistry-view]');if(chemistryBtn){
+    const view=chemistryBtn.dataset.chemistryView==='all'?'all':'season';if(view===state.profileChemistryView)return;state.profileChemistryView=view;
+    const id=$("managerProfileModal")?.dataset.managerId,content=$("managerProfileContent");if(id&&content){const panels=content.querySelector('.manager-profile-tab-panels'),oldPanel=panels?.querySelector('[data-manager-tab-panel="roster"]');if(oldPanel)oldPanel.remove();const notice=document.createElement('div');notice.className='manager-profile-on-demand-loading';notice.innerHTML=`<strong>${view==='all'?'Building all-time chemistry…':'Loading this season’s chemistry…'}</strong><small>${view==='all'?'Checking every loaded IMO season for current-roster starters.':'Comparing selected games with each player’s best weekly game.'}</small>`;content.appendChild(notice);buildManagerProfileTab(id,'roster').then(panelHtml=>{if($("managerProfileModal")?.dataset.managerId!==String(id))return;notice.remove();const targetPanels=content.querySelector('.manager-profile-tab-panels');if(targetPanels&&!targetPanels.querySelector('[data-manager-tab-panel="roster"]'))targetPanels.insertAdjacentHTML('beforeend',panelHtml);bindSparklineTooltips(content);setManagerProfileTab('roster',false)}).catch(error=>{notice.remove();console.warn('Team Chemistry hydration failed:',error)})}return
+  }
   const seasonBtn=e.target.closest("[data-profile-season]");if(seasonBtn){state.profileAverageSeason=seasonBtn.dataset.profileSeason;const id=$("managerProfileModal")?.dataset.managerId,content=$("managerProfileContent");if(id&&content){const panels=content.querySelector('.manager-profile-tab-panels'),oldPanel=panels?.querySelector('[data-manager-tab-panel="roster"]');if(oldPanel)oldPanel.remove();const notice=document.createElement('div');notice.className='manager-profile-on-demand-loading';notice.innerHTML='<strong>Loading roster metrics…</strong><small>Resolving the selected season.</small>';content.appendChild(notice);buildManagerProfileTab(id,'roster').then(panelHtml=>{if($("managerProfileModal")?.dataset.managerId!==String(id))return;notice.remove();const targetPanels=content.querySelector('.manager-profile-tab-panels');if(targetPanels&&!targetPanels.querySelector('[data-manager-tab-panel="roster"]'))targetPanels.insertAdjacentHTML('beforeend',panelHtml);bindSparklineTooltips(content);setManagerProfileTab('roster',false)}).catch(error=>{notice.remove();console.warn('Season metric hydration failed:',error)})}return}
   const link=e.target.closest(".manager-profile-link");if(link){if(Date.now()-lastManagerPointerAction<700)return;closeManagerDirectory();openManagerProfile(link.dataset.managerId);return}
   if(e.target.closest("[data-close-manager-profile]")||e.target.closest("#managerProfileClose"))closeManagerProfile()
