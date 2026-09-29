@@ -36,7 +36,7 @@ async function statsJSON(url){if(state.statsRequestCache.has(url))return state.s
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3529',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3530',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1432,6 +1432,29 @@ function historicalManagerIdForRoster(bundle,rosterId){
   const historicalOwner=String(bundle?.ownerByRoster?.[rid]??'');
   return historicalOwner&&state.managers.has(historicalOwner)?historicalOwner:''
 }
+function canonicalMatchupScore(row){
+  // V3.5.30 — Sleeper NBA matchup `points` can include the full roster's
+  // weekly production. The score shown in the Sleeper matchup UI is the sum
+  // of the selected STARTERS' locked game scores. Rebuild that score from
+  // Sleeper's own historical players_points / starters_points values.
+  const starters=[...new Set(safeArray(row?.starters).map(String).filter(Boolean))];
+  if(starters.length){
+    let total=0,found=0;
+    for(const pid of starters){
+      const raw=row?.players_points?.[pid];
+      const direct=raw===null||raw===undefined||raw===''?NaN:Number(raw);
+      if(Number.isFinite(direct)){total+=direct;found++;continue}
+      const idx=starters.indexOf(pid),sp=row?.starters_points;
+      const aligned=Array.isArray(sp)?Number(sp[idx]):Number(sp?.[pid]);
+      if(Number.isFinite(aligned)){total+=aligned;found++}
+    }
+    // Only trust a reconstructed score when every listed starter has a
+    // historical selected-game score. Otherwise preserve Sleeper's row total.
+    if(found===starters.length)return Math.round(total*100)/100;
+  }
+  const fallback=Number(row?.points);
+  return Number.isFinite(fallback)?fallback:NaN
+}
 function completedMatchupsForBundle(bundle){
   const cacheKey=String(bundle?.league?.league_id||bundle?.league?.season||'unknown');
   if(state.computedCache.completedMatchups.has(cacheKey))return state.computedCache.completedMatchups.get(cacheKey);
@@ -1443,7 +1466,7 @@ function completedMatchupsForBundle(bundle){
       // A canonical H2H meeting must be exactly two Sleeper roster rows. Never
       // guess by taking the first two rows from an ambiguous group.
       if(group.length!==2){if(group.length>2)console.warn('IMO history: rejected ambiguous matchup group',{league:cacheKey,week:Number(week),matchupId,rows:group.length});return}
-      const [a,b]=group,aPts=Number(a.points),bPts=Number(b.points);
+      const [a,b]=group,aPts=canonicalMatchupScore(a),bPts=canonicalMatchupScore(b);
       if(!Number.isFinite(aPts)||!Number.isFinite(bPts)||(aPts===0&&bPts===0))return;
       const aId=historicalManagerIdForRoster(bundle,a.roster_id),bId=historicalManagerIdForRoster(bundle,b.roster_id);
       if(!aId||!bId||aId===bId)return;
