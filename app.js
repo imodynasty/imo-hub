@@ -4179,3 +4179,52 @@ document.addEventListener("focusin",e=>{const link=e.target.closest?.(".manager-
 document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
+
+// V3.5.31 TEMPORARY RAW SLEEPER HISTORY EXPORT
+// Downloads fresh Sleeper payloads so historical Rivalry scoring can be verified
+// against the exact API response rather than inferred from Hub-derived values.
+async function downloadRawRivalryHistoryDiagnostic(){
+  const btn=document.getElementById('rawRivalryDiagnosticButton');
+  const original=btn?.textContent||'DOWNLOAD RAW RIVALRY DATA';
+  try{
+    if(btn){btn.disabled=true;btn.textContent='FETCHING SLEEPER DATA…'}
+    const leagueIds=['1138349648558624768','1212553673821929472'];
+    const payload={diagnostic:'IMO Dynasty raw Sleeper rivalry history',version:'3.5.31',generatedAt:new Date().toISOString(),leagues:[]};
+    for(const leagueId of leagueIds){
+      const [league,users,rosters]=await Promise.all([
+        getJSON(`${CONFIG.api}/league/${leagueId}`,true),
+        getJSON(`${CONFIG.api}/league/${leagueId}/users`,true),
+        getJSON(`${CONFIG.api}/league/${leagueId}/rosters`,true)
+      ]);
+      const weeks=[];
+      for(let week=1;week<=23;week++){
+        const rows=await getJSON(`${CONFIG.api}/league/${leagueId}/matchups/${week}`,true);
+        if(Array.isArray(rows)&&rows.length){
+          weeks.push({week,rows:rows.map(r=>({
+            roster_id:r.roster_id??null,matchup_id:r.matchup_id??null,
+            points:r.points??null,custom_points:r.custom_points??null,
+            starters:r.starters??null,starters_points:r.starters_points??null,
+            players:r.players??null,players_points:r.players_points??null
+          }))});
+        }
+      }
+      payload.leagues.push({league,users,rosters,weeks});
+    }
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=`imo-raw-rivalry-history-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+    if(btn)btn.textContent='DOWNLOADED ✓';
+  }catch(error){
+    console.error('Raw rivalry diagnostic failed',error);
+    if(btn){btn.disabled=false;btn.textContent='FAILED — TRY AGAIN'}
+    alert('Could not download the raw Sleeper history. Please try again.');
+  }finally{
+    setTimeout(()=>{if(btn){btn.disabled=false;btn.textContent=original}},2500);
+  }
+}
+function installRawRivalryDiagnosticButton(){
+  if(document.getElementById('rawRivalryDiagnosticButton'))return;
+  const btn=document.createElement('button');btn.id='rawRivalryDiagnosticButton';btn.type='button';btn.textContent='DOWNLOAD RAW RIVALRY DATA';
+  btn.style.cssText="position:fixed;right:14px;bottom:14px;z-index:2147483647;padding:12px 14px;border:1px solid rgba(31,215,255,.55);border-radius:10px;background:#101722;color:#fff;font:800 11px/1.1 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.08em;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer";
+  btn.addEventListener('click',downloadRawRivalryHistoryDiagnostic);document.body.appendChild(btn);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installRawRivalryDiagnosticButton);else installRawRivalryDiagnosticButton();
