@@ -2283,6 +2283,88 @@ function managerProfileHTML(managerId,sections=['overview']){
   return `${managerProfileHeaderHTML(id)}<div class="manager-profile-tab-panels">${panels}</div>`
 }
 
+
+// V3.5.13 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// starter and player-score data; no external scoring source is used.
+function rivalryManagerOptions(selected=''){
+  return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
+}
+function rivalryMeetings(aId,bId){
+  const a=String(aId),b=String(bId),out=[];
+  state.bundles.forEach(bundle=>completedMatchupsForBundle(bundle).forEach(game=>{
+    if(!((game.aId===a&&game.bId===b)||(game.aId===b&&game.bId===a)))return;
+    const aPts=game.aId===a?game.aPts:game.bPts,bPts=game.aId===a?game.bPts:game.aPts;
+    const rowA=safeArray(bundle.matchups).find(r=>Number(r.week)===Number(game.week)&&String(bundle.ownerByRoster?.[String(r.roster_id)]||'')===a);
+    const rowB=safeArray(bundle.matchups).find(r=>Number(r.week)===Number(game.week)&&String(bundle.ownerByRoster?.[String(r.roster_id)]||'')===b);
+    const playoffStart=Number(bundle.league?.settings?.playoff_week_start)||Infinity;
+    out.push({season:String(game.season),week:Number(game.week),aId:a,bId:b,aPts:Number(aPts),bPts:Number(bPts),rowA,rowB,bundle,playoff:Number(game.week)>=playoffStart});
+  }));
+  return out.sort((x,y)=>Number(x.season)-Number(y.season)||x.week-y.week)
+}
+function rivalryRecord(meetings){let aWins=0,bWins=0,draws=0,aTotal=0,bTotal=0;meetings.forEach(m=>{aTotal+=m.aPts;bTotal+=m.bPts;if(m.aPts>m.bPts)aWins++;else if(m.bPts>m.aPts)bWins++;else draws++});return{aWins,bWins,draws,aTotal,bTotal}}
+function rivalryMvp(meetings){
+  const players=new Map();
+  meetings.forEach(m=>[['a',m.rowA],['b',m.rowB]].forEach(([side,row])=>{
+    if(!row)return;const starters=[...new Set(safeArray(row.starters).map(String).filter(Boolean))];
+    starters.forEach(pid=>{const pts=chemistrySelectedPoints(row,pid);if(!Number.isFinite(pts))return;const key=`${side}:${pid}`,x=players.get(key)||{pid,side,total:0,best:-Infinity,matchups:0};x.total+=pts;x.best=Math.max(x.best,pts);x.matchups++;players.set(key,x)})
+  }));
+  return [...players.values()].sort((a,b)=>b.total-a.total||b.best-a.best)[0]||null
+}
+function rivalryChemistryForSide(meetings,side){
+  let captured=0,available=0,perfect=0,starts=0;
+  meetings.forEach(m=>{const row=side==='a'?m.rowA:m.rowB,bundle=m.bundle;if(!row||!bundle)return;const season=m.season,scoring=bundle.league?.scoring_settings||{},anchor=chemistrySeasonAnchor(season);
+    [...new Set(safeArray(row.starters).map(String).filter(Boolean))].forEach(pid=>{const selected=chemistrySelectedPoints(row,pid);if(!Number.isFinite(selected))return;const games=chemistryRowsForPlayerWeek(pid,season,m.week,scoring,anchor,selected);if(!games.length)return;const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!(best>0))return;captured+=selected;available+=best;starts++;if(Math.abs(selected-best)<.05)perfect++})
+  });
+  return{pct:available>0?Math.max(0,Math.min(100,captured/available*100)):null,captured,available,perfect,starts}
+}
+async function ensureRivalryGameLogs(meetings){
+  const bySeason=new Map();meetings.forEach(m=>[['a',m.rowA],['b',m.rowB]].forEach(([,row])=>{if(!row)return;const set=bySeason.get(m.season)||new Set();safeArray(row.starters).forEach(pid=>set.add(String(pid)));bySeason.set(m.season,set)}));
+  for(const [season,ids] of bySeason){const bundle=bundleForSeason(season);if(!bundle)continue;state.gameLogs[season]??={};const missing=[...ids].filter(pid=>!safeArray(state.gameLogs[season]?.[pid]).length);if(!missing.length)continue;const scoring=bundle.league?.scoring_settings||{};const rows=await limitedMap(missing,5,async pid=>{try{const result=await loadPlayerGameLogAverage(pid,season,scoring);return result?{pid,rows:result.rows||[]}:null}catch(_){return null}});rows.filter(Boolean).forEach(x=>state.gameLogs[season][x.pid]=x.rows)}
+}
+function rivalryScore(meetings){
+  if(!meetings.length)return 0;const r=rivalryRecord(meetings),games=meetings.length,decided=r.aWins+r.bWins;
+  const meetingsScore=Math.min(25,games/12*25),balance=decided?25*(1-Math.abs(r.aWins-r.bWins)/decided):25;
+  const avgMargin=meetings.reduce((s,m)=>s+Math.abs(m.aPts-m.bPts),0)/games,marginScore=20*Math.max(0,1-avgMargin/50);
+  const close=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<10).length,closeScore=15*(close/games),playoffs=meetings.filter(m=>m.playoff).length,playoffScore=Math.min(15,playoffs/3*15);
+  return Math.round(Math.max(0,Math.min(100,meetingsScore+balance+marginScore+closeScore+playoffScore)))
+}
+function rivalryScoreLabel(score){if(score>=90)return'BLOOD FEUD';if(score>=75)return'HEATED';if(score>=55)return'RIVALRY';if(score>=30)return'HISTORY BUILDING';return'JUST GETTING STARTED'}
+function rivalryFacts(meetings,aName,bName){
+  if(!meetings.length)return[];const r=rivalryRecord(meetings),facts=[],close=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<10).length,both300=meetings.filter(m=>m.aPts>=300&&m.bPts>=300).length,playoffs=meetings.filter(m=>m.playoff),last=meetings.at(-1);
+  let streak=1;for(let i=meetings.length-2;i>=0;i--){const winner=x=>x.aPts===x.bPts?'D':x.aPts>x.bPts?'A':'B';if(winner(meetings[i])===winner(last))streak++;else break}const lastWinner=last.aPts===last.bPts?'Neither':last.aPts>last.bPts?aName:bName;
+  if(streak>=2&&lastWinner!=='Neither')facts.push(`🔥 ${lastWinner} has won the last ${streak} meetings.`);
+  if(close)facts.push(`😬 ${close} of ${meetings.length} meetings ${close===1?'has':'have'} been decided by fewer than 10 FPTS.`);
+  if(both300)facts.push(`💯 Both teams topped 300 FPTS in the same matchup ${both300} ${both300===1?'time':'times'}.`);
+  if(playoffs.length){let aw=0,bw=0;playoffs.forEach(m=>m.aPts>m.bPts?aw++:m.bPts>m.aPts?bw++:0);facts.push(`🏆 The playoff series stands ${aw}–${bw}${playoffs.some(m=>m.aPts===m.bPts)?' with a draw':''}.`)}
+  const high=[...meetings].sort((x,y)=>(y.aPts+y.bPts)-(x.aPts+x.bPts))[0];facts.push(`🚀 The highest-scoring meeting produced ${(high.aPts+high.bPts).toFixed(2)} combined FPTS in ${high.season}, Week ${high.week}.`);
+  if(r.aTotal<r.bTotal&&r.aWins>r.bWins)facts.push(`🌀 ${aName} leads the series despite ${bName} scoring more total H2H FPTS.`);else if(r.bTotal<r.aTotal&&r.bWins>r.aWins)facts.push(`🌀 ${bName} leads the series despite ${aName} scoring more total H2H FPTS.`);
+  return facts.slice(0,5)
+}
+function rivalryRenderReport(aId,bId){
+  const root=$('rivalriesReport');if(!root)return;const a=String(aId),b=String(bId),aName=managerName(a),bName=managerName(b),meetings=rivalryMeetings(a,b);
+  if(!meetings.length){root.innerHTML='<div class="rivalry-empty"><strong>No completed meetings yet.</strong><small>Rivalry stats will appear after these franchises complete a matchup.</small></div>';return}
+  const r=rivalryRecord(meetings),margins=meetings.map(m=>({...m,margin:Math.abs(m.aPts-m.bPts)})),closest=[...margins].sort((x,y)=>x.margin-y.margin)[0],biggest=[...margins].sort((x,y)=>y.margin-x.margin)[0];
+  const last5=meetings.slice(-5).map(m=>m.aPts===m.bPts?'D':m.aPts>m.bPts?'W':'L');let streak=1,lastResult=last5.at(-1)||'';for(let i=meetings.length-2;i>=0;i--){const res=meetings[i].aPts===meetings[i].bPts?'D':meetings[i].aPts>meetings[i].bPts?'W':'L';if(res===lastResult)streak++;else break}const streakOwner=lastResult==='W'?aName:lastResult==='L'?bName:'Draw';
+  const playoffs=meetings.filter(m=>m.playoff),playA=playoffs.filter(m=>m.aPts>m.bPts).length,playB=playoffs.filter(m=>m.bPts>m.aPts).length,mvp=rivalryMvp(meetings),chemA=rivalryChemistryForSide(meetings,'a'),chemB=rivalryChemistryForSide(meetings,'b'),score=rivalryScore(meetings),facts=rivalryFacts(meetings,aName,bName);
+  const mvpOwner=mvp?(mvp.side==='a'?aName:bName):'',mvpPlayer=mvp?state.players[mvp.pid]||{}:{},mvpImg=mvp?.pid?`https://sleepercdn.com/content/nba/players/${mvp.pid}.jpg`:'';
+  const chem=(name,x)=>`<div class="rivalry-chem-team"><b>${esc(name)}</b><strong>${x.pct!==null?`${x.pct.toFixed(1)}%`:'—'}</strong><span>${x.pct!==null?`${chemistryStatus(x.pct,x.starts).icon} ${chemistryStatus(x.pct,x.starts).label}`:'NO DATA'}</span><small>${x.perfect} / ${x.starts} perfect picks</small></div>`;
+  root.innerHTML=`<section class="rivalry-hero"><span class="eyebrow">ALL-TIME SERIES · ${meetings.length} MEETINGS</span><div class="rivalry-versus"><div>${managerAvatarHTML(a,'rivalry-avatar')}<b>${esc(aName)}</b></div><strong>${r.aWins}<i>—</i>${r.bWins}</strong><div>${managerAvatarHTML(b,'rivalry-avatar')}<b>${esc(bName)}</b></div></div>${r.draws?`<small class="rivalry-draws">${r.draws} draw${r.draws===1?'':'s'}</small>`:''}<div class="rivalry-total"><span>TOTAL H2H FPTS</span><b>${r.aTotal.toFixed(2)} <i>—</i> ${r.bTotal.toFixed(2)}</b></div><div class="rivalry-last-five"><span>LAST 5 · ${esc(aName)}</span><div>${last5.map(x=>`<b class="${x==='W'?'win':x==='L'?'loss':'draw'}">${x}</b>`).join('')}</div></div></section>
+  <div class="rivalry-stat-grid"><div><span>AVG MARGIN</span><strong>${(margins.reduce((s,x)=>s+x.margin,0)/meetings.length).toFixed(2)}</strong></div><div><span>CLOSEST GAME</span><strong>${closest.margin.toFixed(2)}</strong><small>${closest.season} · W${closest.week}</small></div><div><span>BIGGEST WIN</span><strong>${biggest.margin.toFixed(2)}</strong><small>${esc(biggest.aPts>biggest.bPts?aName:bName)}</small></div><div><span>CURRENT STREAK</span><strong>${lastResult==='D'?'D':`W${streak}`}</strong><small>${esc(streakOwner)}</small></div><div><span>PLAYOFF H2H</span><strong>${playA}–${playB}</strong><small>${playoffs.length} meeting${playoffs.length===1?'':'s'}</small></div></div>
+  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo">${mvpImg?`<img src="${esc(mvpImg)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
+  <section class="rivalry-card"><div class="rivalry-card-heading"><span class="eyebrow">🧠 LINEUP DECISION-MAKING</span><h3>H2H Chemistry</h3><p>Only lineup starts made in meetings between these two franchises.</p></div><div class="rivalry-chemistry">${chem(aName,chemA)}<span class="rivalry-vs-mini">VS</span>${chem(bName,chemB)}</div></section>
+  <section class="rivalry-split"><div class="rivalry-card rivalry-facts"><span class="eyebrow">📰 SERIES NOTES</span><h3>Rivalry Facts</h3>${facts.map(f=>`<p>${esc(f)}</p>`).join('')}</div><div class="rivalry-card rivalry-score"><span class="eyebrow">🔥 COMPETITIVE HISTORY</span><h3>Rivalry Score</h3><strong>${score}</strong><b>${rivalryScoreLabel(score)}</b><div><i style="width:${score}%"></i></div><small>Meetings · series balance · margins · close games · playoffs</small></div></section>
+  <details class="rivalry-meetings"><summary>ALL ${meetings.length} MEETINGS <span>›</span></summary><div>${[...meetings].reverse().map(m=>`<div class="rivalry-meeting"><span>${esc(m.season)} · ${m.playoff?'PLAYOFFS · ':''}WEEK ${m.week}</span><p><b class="${m.aPts>m.bPts?'winner':''}">${esc(aName)} ${m.aPts.toFixed(2)}</b><i>—</i><b class="${m.bPts>m.aPts?'winner':''}">${m.bPts.toFixed(2)} ${esc(bName)}</b></p></div>`).join('')}</div></details>`;
+}
+function rivalrySelectorHTML(aId='',bId=''){
+  return `<div class="rivalry-selector"><label><span>MANAGER 1</span><select id="rivalryManagerA"><option value="">Select manager</option>${rivalryManagerOptions(aId)}</select></label><b>VS</b><label><span>MANAGER 2</span><select id="rivalryManagerB"><option value="">Select manager</option>${rivalryManagerOptions(bId)}</select></label></div><div id="rivalriesReport" class="rivalries-report"><div class="rivalry-empty"><strong>Select two managers.</strong><small>The full rivalry report will appear here.</small></div></div>`
+}
+async function updateRivalryReport(){
+  const a=$('rivalryManagerA')?.value,b=$('rivalryManagerB')?.value,root=$('rivalriesReport');if(!a||!b||a===b){if(root)root.innerHTML=`<div class="rivalry-empty"><strong>${a&&b?'Choose two different managers.':'Select two managers.'}</strong><small>The full rivalry report will appear here.</small></div>`;return}
+  const meetings=rivalryMeetings(a,b);if(root)root.innerHTML='<div class="rivalry-loading"><strong>Building rivalry dossier…</strong><small>Checking historical Sleeper starters and game scores.</small></div>';await ensureRivalryGameLogs(meetings);rivalryRenderReport(a,b)
+}
+function openRivalries(){const modal=$('rivalriesModal'),content=$('rivalriesContent');if(!modal||!content)return;content.innerHTML=rivalrySelectorHTML();modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.body.classList.add('rivalries-open');requestAnimationFrame(()=>$('rivalryManagerA')?.focus())}
+function closeRivalries(){const modal=$('rivalriesModal');modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('rivalries-open')}
+
 function playerTrades(playerId){const id=String(playerId);return state.trades.filter(t=>Object.prototype.hasOwnProperty.call(t.adds||{},id)||Object.prototype.hasOwnProperty.call(t.drops||{},id))}
 function playerInterestRows(){const now=Date.now();let rows=[];try{rows=JSON.parse(localStorage.getItem("imoPlayerInterest")||"[]")}catch{}rows=(Array.isArray(rows)?rows:[]).filter(x=>x&&Number(x.expires)>now);state.playerInterest=rows;try{localStorage.setItem("imoPlayerInterest",JSON.stringify(rows))}catch{}return rows}
 function isPlayerStarred(playerId){return playerInterestRows().some(x=>String(x.playerId)===String(playerId))}
@@ -3866,6 +3948,8 @@ document.addEventListener("click",e=>{
   if(e.target.closest("[data-close-pick-history]")||e.target.closest("#pickHistoryClose")){closePickHistory();return}
   const playerLinkEl=e.target.closest(".player-history-link");if(playerLinkEl){if(playerLinkEl.closest("#managerPicksMadeModal"))closeManagerPicksMade();if(playerLinkEl.closest("#tradeReturnTreeModal"))closeTradeReturnTree();openPlayerHistory(playerLinkEl.dataset.playerId);return}
   if(e.target.closest("[data-close-player-history]")||e.target.closest("#playerHistoryClose")){closePlayerHistory();return}
+  if(e.target.closest("#rivalriesBtn")){openRivalries();return}
+  if(e.target.closest("[data-close-rivalries]")||e.target.closest("#rivalriesClose")){closeRivalries();return}
   if(e.target.closest("#managerDirectoryBtn")){openManagerDirectory();return}
   if(e.target.closest("[data-close-manager-directory]")||e.target.closest("#managerDirectoryClose")){closeManagerDirectory();return}
   const ledgerToggle=e.target.closest('[data-manager-ledger-toggle]');if(ledgerToggle){const column=ledgerToggle.closest('.manager-ledger-column'),extras=column?Array.from(column.querySelectorAll('.manager-ledger-item-wrap.is-extra')):[];if(column&&extras.length){const expanded=column.classList.toggle('expanded');ledgerToggle.setAttribute('aria-expanded',expanded?'true':'false');ledgerToggle.textContent=managerTradeLedgerToggleLabel(extras.length,expanded)}return}
@@ -3881,6 +3965,7 @@ document.addEventListener("click",e=>{
 let globalSearchDebounce=null;document.addEventListener("input",e=>{if(e.target?.id!=="globalSearchInput")return;clearTimeout(globalSearchDebounce);const value=e.target.value;globalSearchDebounce=setTimeout(()=>renderGlobalSearchResults(value),90)});
 document.addEventListener("toggle",e=>{const detail=e.target;if(!(detail instanceof HTMLDetailsElement)||!detail.open)return;if(detail.matches(".profile-badge-pop")){detail.closest(".profile-badge-icons")?.querySelectorAll(".profile-badge-pop[open]").forEach(x=>{if(x!==detail)x.open=false})}if(detail.matches(".profile-form-result")){detail.closest(".profile-form-strip")?.querySelectorAll(".profile-form-result[open]").forEach(x=>{if(x!==detail)x.open=false})}if(detail.matches(".player-history-trade")){detail.closest(".player-history-timeline")?.querySelectorAll(".player-history-trade[open]").forEach(x=>{if(x!==detail)x.open=false})}},true);
 document.addEventListener('change',e=>{
+  if(e.target.closest?.('#rivalryManagerA')||e.target.closest?.('#rivalryManagerB')){updateRivalryReport();return}
   const ledgerSelect=e.target.closest?.('[data-manager-ledger-season]');
   if(ledgerSelect){const managerId=ledgerSelect.dataset.managerId||ledgerSelect.closest('[data-manager-trade-ledger]')?.dataset.managerTradeLedger,body=ledgerSelect.closest('[data-manager-trade-ledger]')?.querySelector('[data-manager-ledger-body]');if(managerId&&body)body.innerHTML=managerTradeLedgerInnerHTML(managerId,ledgerSelect.value);return}
   const select=e.target.closest?.('[data-mobile-manager-select]');
@@ -3894,6 +3979,6 @@ document.addEventListener('change',e=>{
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-manager-switcher]')&&!e.target.closest('#mobileManagerSwitcherSheet'))closeManagerSwitchers()},{passive:true});
 document.addEventListener("pointerover",e=>{if(!matchMedia("(pointer:fine)").matches)return;const link=e.target.closest?.(".manager-profile-link");if(link)queueManagerProfilePrewarm(link.dataset.managerId)},{passive:true});
 document.addEventListener("focusin",e=>{const link=e.target.closest?.(".manager-profile-link");if(link)queueManagerProfilePrewarm(link.dataset.managerId)});
-document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
+document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
