@@ -2674,3 +2674,102 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 /* V3.5.33 — Rivalry MVP provenance + historical scoring clarity */
 .rivalry-mvp-team{display:flex!important;align-items:center;gap:7px;margin:3px 0 2px!important}.rivalry-mvp-team span{font-size:8px;font-weight:1000;letter-spacing:.12em;color:#7f8a9c}.rivalry-mvp-team strong{font-size:11px;color:#86efac}.rivalry-mvp-opponent{margin:0!important;color:#8d98a9!important;font-size:9px!important;font-weight:800;letter-spacing:.02em}
 @media(max-width:700px){.rivalry-mvp-team strong{font-size:10px}.rivalry-mvp-opponent{font-size:8px!important}}
+
+/* Rivalry export polish */
+.rivalry-export-mode{
+  position:relative;
+  isolation:isolate;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(245,158,11,.12), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(6,182,212,.10), transparent 34%),
+    linear-gradient(180deg,#07111b 0%,#0a1420 100%)!important;
+  border:1px solid rgba(255,255,255,.06);
+  box-shadow:0 30px 90px rgba(0,0,0,.45);
+}
+.rivalry-export-mode::before{
+  content:"IMO RIVALRIES";
+  position:absolute;
+  top:16px;
+  left:20px;
+  font:900 12px/1 system-ui;
+  letter-spacing:.22em;
+  color:#22d3ee;
+  opacity:.95;
+}
+.rivalry-export-mode .rivalry-hero{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.09)!important;
+  background:
+    radial-gradient(circle at 50% -5%, rgba(239,68,68,.11), transparent 30%),
+    linear-gradient(90deg, rgba(245,158,11,.08) 0%, rgba(255,255,255,0) 22%, rgba(34,211,238,.06) 100%),
+    linear-gradient(180deg, rgba(16,24,36,.96), rgba(10,15,24,.98))!important;
+  box-shadow:inset 0 1px rgba(255,255,255,.05), 0 20px 65px rgba(0,0,0,.26)!important;
+}
+.rivalry-export-mode .rivalry-hero .eyebrow,
+.rivalry-export-mode .rivalry-card .eyebrow{font-size:12px!important;letter-spacing:.22em!important;color:#22d3ee!important}
+.rivalry-export-mode .rivalry-versus>strong{font-size:clamp(5rem,9vw,8.2rem)!important;font-weight:1000!important;letter-spacing:-.09em}
+.rivalry-export-mode .rivalry-versus>div{gap:16px!important}
+.rivalry-export-mode .rivalry-versus b,
+.rivalry-export-mode .rivalry-manager-link{font-size:clamp(1.25rem,2vw,1.8rem)!important;font-weight:900!important;color:#f4f7fb!important;text-decoration-thickness:1px}
+.rivalry-export-mode .rivalry-total span,
+.rivalry-export-mode .rivalry-last-five>span{font-size:11px!important;letter-spacing:.18em!important;color:#91a2b8!important}
+.rivalry-export-mode .rivalry-total b{font-size:clamp(1.7rem,2.8vw,2.35rem)!important;font-weight:950!important}
+.rivalry-export-mode .rivalry-last-five{margin-top:30px!important}
+.rivalry-export-mode .rivalry-last-five button{width:42px!important;height:42px!important;border-radius:12px!important;font-size:15px!important;box-shadow:inset 0 1px rgba(255,255,255,.05)}
+.rivalry-export-mode .rivalry-result-peek{display:none!important}
+.rivalry-export-mode .rivalry-stat-grid>div,
+.rivalry-export-mode .rivalry-card,
+.rivalry-export-mode .rivalry-chem-team,
+.rivalry-export-mode .rivalry-mvp-stats>div{
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:linear-gradient(180deg, rgba(19,28,40,.97), rgba(10,16,26,.99))!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.22);
+}
+.rivalry-export-mode .rivalry-stat-grid{gap:14px!important}
+.rivalry-export-mode .rivalry-stat-grid>div{padding:20px!important;border-radius:18px!important}
+.rivalry-export-mode .rivalry-stat-grid strong{font-size:2rem!important;font-weight:950!important}
+.rivalry-export-mode .rivalry-stat-grid small{font-size:11px!important;line-height:1.4!important}
+.rivalry-export-mode .rivalry-mvp{
+  grid-template-columns:118px 1fr auto!important;
+  align-items:center!important;
+  background:
+    linear-gradient(90deg, rgba(245,158,11,.16) 0%, rgba(245,158,11,.06) 15%, rgba(0,0,0,0) 38%, rgba(34,211,238,.05) 100%),
+    linear-gradient(180deg, rgba(19,28,40,.97), rgba(10,16,26,.99))!important;
+}
+.rivalry-export-mode .rivalry-mvp-photo,
+.rivalry-export-mode .rivalry-avatar{
+  position:relative!important;
+  overflow:hidden!important;
+  background-color:#1b2532!important;
+  background-repeat:no-repeat!important;
+  background-size:cover!important;
+  box-shadow:inset 0 1px rgba(255,255,255,.06), 0 10px 28px rgba(0,0,0,.25)!important;
+}
+.rivalry-export-mode .rivalry-mvp-photo{width:118px!important;height:118px!important;border-radius:24px!important;background-position:center top!important}
+.rivalry-export-mode .rivalry-avatar{width:76px!important;height:76px!important;border-radius:999px!important;background-position:center center!important}
+.rivalry-export-mode .rivalry-mvp-photo.has-export-photo img,
+.rivalry-export-mode .rivalry-avatar.has-export-photo img{display:none!important}
+.rivalry-export-mode .rivalry-mvp-photo.has-export-photo .rivalry-mvp-photo-fallback{display:none!important}
+.rivalry-export-mode .rivalry-mvp h3{font-size:3.15rem!important;line-height:.94!important;letter-spacing:-.045em!important;font-weight:1000!important;margin:.2rem 0 .55rem!important}
+.rivalry-export-mode .rivalry-mvp-team,
+.rivalry-export-mode .rivalry-mvp-opponent{font-size:13px!important;color:#9fb1c6!important;letter-spacing:.06em!important}
+.rivalry-export-mode .rivalry-mvp-team strong{font-size:1.1em!important;color:#86efac!important}
+.rivalry-export-mode .rivalry-mvp-stats{gap:12px!important}
+.rivalry-export-mode .rivalry-mvp-stats>div{min-width:144px!important;padding:16px 18px!important;border-radius:16px!important}
+.rivalry-export-mode .rivalry-mvp-stats strong{font-size:1.75rem!important;font-weight:950!important}
+.rivalry-export-mode .rivalry-mvp-stats span{font-size:10px!important;letter-spacing:.16em!important}
+.rivalry-export-mode .rivalry-chem-team>b{font-size:14px!important}
+.rivalry-export-mode .rivalry-chem-team>strong{font-size:3rem!important;line-height:1!important}
+.rivalry-export-mode .rivalry-chem-team>span{font-size:12px!important}
+.rivalry-export-mode .rivalry-chem-team>small{font-size:11px!important}
+.rivalry-export-mode .rivalry-facts p{padding:14px 16px!important;border-radius:14px!important;font-size:13px!important;line-height:1.45!important;background:rgba(255,255,255,.035)!important;border:1px solid rgba(255,255,255,.06)!important}
+.rivalry-export-mode .rivalry-score{text-align:center!important;display:grid;align-content:start!important}
+.rivalry-export-mode .rivalry-score>strong{font-size:5.65rem!important;font-weight:1000!important}
+.rivalry-export-mode .rivalry-score>b{font-size:13px!important;letter-spacing:.2em!important}
+.rivalry-export-mode .rivalry-score>div{height:10px!important;margin-top:18px!important}
+.rivalry-export-mode .rivalry-score>div i{background:linear-gradient(90deg,#991b1b,#ef4444,#f59e0b)!important}
+.rivalry-export-mode .rivalry-meetings,
+.rivalry-export-mode .rivalry-result-peek{display:none!important}
+.rivalry-exporting .rivalry-meetings,
+.rivalry-exporting .rivalry-result-peek{display:none!important}

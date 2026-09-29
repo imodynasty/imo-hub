@@ -2586,29 +2586,56 @@ async function rivalryImageDataUrl(src){
   }
   return'';
 }
+async function buildRivalryExportClone(target){
+  const clone=target.cloneNode(true);
+  clone.classList.add('rivalry-export-mode');
+  clone.style.width='1560px';
+  clone.style.maxWidth='1560px';
+  clone.style.padding='20px';
+  clone.style.position='fixed';
+  clone.style.left='-20000px';
+  clone.style.top='0';
+  clone.style.zIndex='-1';
+  clone.style.borderRadius='30px';
+  clone.style.overflow='hidden';
+  clone.querySelectorAll('.rivalry-download-btn,.rivalry-close-btn').forEach(x=>x.remove());
+  document.body.appendChild(clone);
+
+  const imgs=[...clone.querySelectorAll('img')];
+  await Promise.all(imgs.map(async img=>{
+    const src=img.currentSrc||img.getAttribute('src')||'';
+    const holder=img.closest('.rivalry-mvp-photo,.rivalry-avatar');
+    const data=await rivalryImageDataUrl(src);
+    if(data&&holder){
+      holder.style.backgroundImage=`url("${data}")`;
+      holder.classList.add('has-export-photo');
+      img.remove();
+      return;
+    }
+    if(data)img.src=data;
+    img.loading='eager';
+    img.decoding='sync';
+  }));
+
+  const decodeTargets=[...clone.querySelectorAll('img')];
+  await Promise.all(decodeTargets.map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(resolve=>{
+    const done=()=>resolve();
+    img.addEventListener('load',done,{once:true});
+    img.addEventListener('error',done,{once:true});
+    setTimeout(done,5000);
+  })));
+  await Promise.all(decodeTargets.map(img=>typeof img.decode==='function'?img.decode().catch(()=>{}):Promise.resolve()));
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  return clone;
+}
 async function downloadRivalryPNG(button){
   const target=document.querySelector('#rivalriesReport .rivalry-export-area');if(!target||typeof html2canvas!=='function')return;
   const a=$('rivalryManagerA')?.value,b=$('rivalryManagerB')?.value;if(!a||!b)return;button.disabled=true;button.classList.add('is-loading');const old=button.innerHTML;button.textContent='…';
-  const imageState=[];
+  let clone=null;
   try{
     document.body.classList.add('rivalry-exporting');
-    const imgs=[...target.querySelectorAll('img')];
-    // html2canvas is unreliable with remote Sleeper portraits (especially object-fit
-    // crops). Embed every rivalry portrait as a data URL before capture so the PNG
-    // contains the exact pixels instead of depending on CORS during rendering.
-    await Promise.all(imgs.map(async img=>{
-      const src=img.currentSrc||img.getAttribute('src')||'';
-      imageState.push({img,src:img.getAttribute('src')||'',style:img.getAttribute('style'),crossorigin:img.getAttribute('crossorigin')});
-      const data=await rivalryImageDataUrl(src);
-      if(data)img.src=data;
-      img.loading='eager';img.decoding='sync';
-      if(img.closest('.rivalry-mvp-photo'))img.style.cssText+=';position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center top!important;display:block!important;';
-      else if(img.closest('.rivalry-avatar'))img.style.cssText+=';width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;';
-    }));
-    await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(resolve=>{const done=()=>resolve();img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,5000)})));
-    await Promise.all(imgs.map(img=>typeof img.decode==='function'?img.decode().catch(()=>{}):Promise.resolve()));
-    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const canvas=await html2canvas(target,{backgroundColor:'#0b0f15',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1080,target.scrollWidth),imageTimeout:10000});
+    clone=await buildRivalryExportClone(target);
+    const canvas=await html2canvas(clone,{backgroundColor:'#08121d',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1560,clone.scrollWidth),imageTimeout:12000});
     const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(new Error('PNG export failed')),'image/png'));
     const filename=`imo-rivalry-${fileSafeName(managerName(a))}-vs-${fileSafeName(managerName(b))}.png`;
     const file=new File([blob],filename,{type:'image/png'});
@@ -2617,7 +2644,7 @@ async function downloadRivalryPNG(button){
     else{const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
     button.innerHTML='✓';setTimeout(()=>button.innerHTML=old,1400)
   }catch(err){if(err?.name!=='AbortError')console.error('Rivalry PNG export failed',err);button.innerHTML=err?.name==='AbortError'?old:'!';setTimeout(()=>button.innerHTML=old,1600)}finally{
-    imageState.forEach(({img,src,style,crossorigin})=>{if(!img?.isConnected)return;if(crossorigin===null)img.removeAttribute('crossorigin');else img.setAttribute('crossorigin',crossorigin);if(style===null)img.removeAttribute('style');else img.setAttribute('style',style);if(src)img.setAttribute('src',src)});
+    if(clone?.isConnected)clone.remove();
     document.body.classList.remove('rivalry-exporting');button.disabled=false;button.classList.remove('is-loading')
   }
 }
