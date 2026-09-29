@@ -2773,3 +2773,93 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 .rivalry-export-mode .rivalry-result-peek{display:none!important}
 .rivalry-exporting .rivalry-meetings,
 .rivalry-exporting .rivalry-result-peek{display:none!important}
+
+/* V3.5.36 — premium rivalry poster export */
+.rivalry-export-mode{
+  gap:14px!important;
+  padding:0 18px 18px!important;
+  background:#07111b!important;
+  border:1px solid rgba(34,211,238,.18)!important;
+  border-radius:28px!important;
+  box-shadow:0 32px 90px rgba(0,0,0,.5)!important;
+}
+.rivalry-export-mode::before{display:none!important}
+.rivalry-export-header{
+  height:62px;
+  margin:0 -18px;
+  padding:0 26px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  box-sizing:border-box;
+  border-bottom:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(90deg,rgba(245,158,11,.18),rgba(12,21,32,.98) 38%,rgba(34,211,238,.08));
+  color:#dce8f6;
+  font:900 12px/1 system-ui;
+  letter-spacing:.32em;
+}
+.rivalry-export-brand{display:flex;align-items:center;gap:11px;color:#f5d267;font-size:14px;letter-spacing:.28em}
+.rivalry-export-crown{font-size:22px;line-height:1;color:#fbbf24}
+.rivalry-export-mode .rivalry-hero{
+  margin-top:0!important;
+  padding:28px 44px 30px!important;
+  border-radius:0 0 26px 26px!important;
+  background:
+    radial-gradient(circle at 12% 42%,rgba(245,158,11,.12),transparent 25%),
+    radial-gradient(circle at 88% 42%,rgba(34,211,238,.11),transparent 25%),
+    linear-gradient(180deg,#101c29 0%,#0b1520 100%)!important;
+}
+.rivalry-export-mode .rivalry-versus{margin:16px auto 10px!important;max-width:1180px!important}
+.rivalry-export-mode .rivalry-versus>div:first-child{justify-content:flex-end!important}
+.rivalry-export-mode .rivalry-versus>div:last-child{justify-content:flex-start!important}
+.rivalry-export-mode .rivalry-versus>strong{font-size:7.4rem!important;min-width:320px;text-align:center}
+.rivalry-export-mode .rivalry-avatar{width:92px!important;height:92px!important;border:2px solid rgba(255,255,255,.14)!important}
+.rivalry-export-mode .rivalry-manager-link{font-size:1.85rem!important;max-width:300px!important;line-height:1.02!important}
+.rivalry-export-mode .rivalry-total{margin-top:4px!important}
+.rivalry-export-mode .rivalry-total b{font-size:2.3rem!important}
+.rivalry-export-mode .rivalry-last-five{margin-top:18px!important}
+.rivalry-export-mode .rivalry-stat-grid>div{min-height:116px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;padding:18px 22px!important}
+.rivalry-export-mode .rivalry-stat-grid span{font-size:10px!important;letter-spacing:.2em!important}
+.rivalry-export-mode .rivalry-stat-grid strong{font-size:2.2rem!important;margin-top:7px!important}
+.rivalry-export-mode .rivalry-mvp{
+  min-height:270px!important;
+  grid-template-columns:250px minmax(0,1fr) auto!important;
+  gap:30px!important;
+  padding:0 28px 0 0!important;
+  overflow:hidden!important;
+  border-color:rgba(245,158,11,.35)!important;
+  background:
+    radial-gradient(circle at 18% 50%,rgba(245,158,11,.22),transparent 28%),
+    linear-gradient(100deg,#281d0d 0%,#121a24 38%,#0c1722 100%)!important;
+}
+.rivalry-export-mode .rivalry-mvp-photo{
+  align-self:stretch!important;
+  width:250px!important;
+  height:270px!important;
+  border-radius:0!important;
+  background-color:#111b27!important;
+  background-size:cover!important;
+  background-position:center 12%!important;
+  box-shadow:none!important;
+  filter:none!important;
+  opacity:1!important;
+}
+.rivalry-export-mode .rivalry-mvp-photo::after{display:none!important}
+.rivalry-export-mode .rivalry-mvp h3{font-size:3.65rem!important;line-height:.88!important;max-width:650px!important;margin:.28rem 0 .7rem!important}
+.rivalry-export-mode .rivalry-mvp-team{font-size:14px!important;margin-top:10px!important}
+.rivalry-export-mode .rivalry-mvp-opponent{font-size:13px!important;margin-top:6px!important}
+.rivalry-export-mode .rivalry-mvp-stats{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;min-width:190px!important}
+.rivalry-export-mode .rivalry-mvp-stats>div{min-width:190px!important;padding:17px 20px!important;text-align:center!important}
+.rivalry-export-mode .rivalry-mvp-stats strong{font-size:2rem!important}
+.rivalry-export-mode .rivalry-chem-card{padding:24px 28px!important}
+.rivalry-export-mode .rivalry-card-heading h3{font-size:2rem!important;margin:.2rem 0 .25rem!important}
+.rivalry-export-mode .rivalry-card-heading p{font-size:12px!important}
+.rivalry-export-mode .rivalry-chemistry{margin-top:16px!important;gap:18px!important}
+.rivalry-export-mode .rivalry-chem-team{min-height:132px!important;padding:18px 22px!important}
+.rivalry-export-mode .rivalry-split{grid-template-columns:1.55fr .65fr!important;gap:14px!important}
+.rivalry-export-mode .rivalry-facts,.rivalry-export-mode .rivalry-score{padding:22px 24px!important}
+.rivalry-export-mode .rivalry-facts h3,.rivalry-export-mode .rivalry-score h3{font-size:1.7rem!important;margin:.2rem 0 .55rem!important}
+.rivalry-export-mode .rivalry-facts p{margin:7px 0!important;padding:11px 14px!important;font-size:12px!important}
+.rivalry-export-mode .rivalry-score{min-height:100%!important;justify-content:start!important}
+.rivalry-export-mode .rivalry-score>strong{font-size:6rem!important;margin:18px 0 4px!important}
+.rivalry-export-mode .rivalry-score>div{margin-top:18px!important}

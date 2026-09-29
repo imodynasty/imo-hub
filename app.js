@@ -2599,6 +2599,10 @@ async function buildRivalryExportClone(target){
   clone.style.borderRadius='30px';
   clone.style.overflow='hidden';
   clone.querySelectorAll('.rivalry-download-btn,.rivalry-close-btn').forEach(x=>x.remove());
+  const exportHeader=document.createElement('div');
+  exportHeader.className='rivalry-export-header';
+  exportHeader.innerHTML='<div class="rivalry-export-brand"><span class="rivalry-export-crown">♛</span><strong>IMO DYNASTY</strong></div><span>RIVALRY SERIES</span>';
+  clone.prepend(exportHeader);
   document.body.appendChild(clone);
 
   const imgs=[...clone.querySelectorAll('img')];
