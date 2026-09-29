@@ -2284,7 +2284,7 @@ function managerProfileHTML(managerId,sections=['overview']){
 }
 
 
-// V3.5.23 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// V3.5.24 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
 // starter and player-score data; no external scoring source is used.
 function rivalryManagerOptions(selected=''){
   return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
@@ -2326,10 +2326,10 @@ function rivalryGrandFinalMeetings(meetings){
 }
 function rivalryScore(meetings){
   if(!meetings.length)return 0;const r=rivalryRecord(meetings),games=meetings.length;
-  // Series Balance (20): even = 20, falling linearly to 0 once either side leads by 5+ wins.
-  const seriesWinGap=Math.abs(r.aWins-r.bWins),balance=20*Math.max(0,1-seriesWinGap/5);
-  // Scoring Margin (40): 0 average margin = 40, falling linearly to 0 at 50+ FPTS.
-  const avgMargin=meetings.reduce((s,m)=>s+Math.abs(m.aPts-m.bPts),0)/games,marginScore=40*Math.max(0,1-avgMargin/50);
+  // Series Balance (30): even = 30, falling linearly to 0 once either side leads by 5+ wins.
+  const seriesWinGap=Math.abs(r.aWins-r.bWins),balance=30*Math.max(0,1-seriesWinGap/5);
+  // Scoring Margin (50): 0 average margin = 50, falling linearly to 0 at 50+ FPTS.
+  const avgMargin=meetings.reduce((s,m)=>s+Math.abs(m.aPts-m.bPts),0)/games,marginScore=50*Math.max(0,1-avgMargin/50);
   // Close Games (10): proportional share of meetings decided by fewer than 20 FPTS.
   const close=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<20).length,closeScore=10*(close/games);
   // Playoff History (10): 5 points per playoff meeting, capped at two meetings.
@@ -2419,7 +2419,7 @@ function rivalryRenderReport(aId,bId){
   const closestWinner=closest.aPts===closest.bPts?'Draw':closest.aPts>closest.bPts?aName:bName,biggestWinner=biggest.aPts>biggest.bPts?aName:bName;
   const playoffs=meetings.filter(m=>m.playoff),playA=playoffs.filter(m=>m.aPts>m.bPts).length,playB=playoffs.filter(m=>m.bPts>m.aPts).length,mvp=rivalryMvp(meetings),chemA=rivalryChemistryForSide(meetings,'a'),chemB=rivalryChemistryForSide(meetings,'b'),score=rivalryScore(meetings),facts=rivalryFacts(meetings,aName,bName);
   const mvpOwner=mvp?(mvp.side==='a'?aName:bName):'',mvpImg=mvp?.pid?`https://sleepercdn.com/content/nba/players/${mvp.pid}.jpg`:'';
-  const rivalryManagerAvatar=id=>managerAvatarHTML(id,'rivalry-avatar').replace('loading=\"lazy\"','loading=\"eager\" crossorigin=\"anonymous\"');
+  const rivalryManagerAvatar=id=>managerAvatarHTML(id,'rivalry-avatar').replace('loading=\"lazy\"','loading=\"eager\" decoding=\"async\"');
   const chem=(name,x)=>`<div class="rivalry-chem-team"><b>${esc(name)}</b><strong>${x.pct!==null?`${x.pct.toFixed(1)}%`:'—'}</strong><span>${x.pct!==null?`${chemistryStatus(x.pct,x.starts).icon} ${chemistryStatus(x.pct,x.starts).label}`:'NO DATA'}</span><small>${x.perfect} / ${x.starts} perfect picks</small></div>`;
   root.innerHTML=`<div class="rivalry-report-tools"><button type="button" class="rivalry-download-btn" data-download-rivalry aria-label="Download rivalry" title="Download rivalry">↓</button></div><div class="rivalry-export-area">
   <section class="rivalry-hero"><span class="eyebrow">ALL-TIME SERIES · ${meetings.length} MEETINGS</span><div class="rivalry-versus"><div>${rivalryManagerAvatar(a)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(a)}">${esc(aName)}</button></div><strong>${r.aWins}<i>—</i>${r.bWins}</strong><div>${rivalryManagerAvatar(b)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(b)}">${esc(bName)}</button></div></div>${r.draws?`<small class="rivalry-draws">${r.draws} draw${r.draws===1?'':'s'}</small>`:''}<div class="rivalry-total"><span>TOTAL H2H FPTS</span><b>${r.aTotal.toFixed(2)} <i>—</i> ${r.bTotal.toFixed(2)}</b></div><div class="rivalry-last-five"><span>LAST 5 · ${esc(aName)}</span><div>${recent.map((m,i)=>{const x=last5[i];return `<button type="button" class="${x==='W'?'win':x==='L'?'loss':'draw'}" data-rivalry-result="${i}" aria-label="View ${x} result">${x}</button>`}).join('')}</div></div><div class="rivalry-result-peek" id="rivalryResultPeek" hidden></div></section>
@@ -2444,9 +2444,10 @@ async function downloadRivalryPNG(button){
   try{
     document.body.classList.add('rivalry-exporting');
     const imgs=[...target.querySelectorAll('img')];
-    // Keep the live Rivalries UI on the same direct Sleeper image URLs used by
-    // manager/player profiles. Swap to a CORS-safe copy only for the PNG capture.
-    imgs.forEach(img=>{imageState.push({img,src:img.getAttribute('src')||'',crossorigin:img.getAttribute('crossorigin')});img.loading='eager';const proxied=rivalryExportProxyUrl(img.currentSrc||img.src||img.getAttribute('src'));if(proxied&&proxied!==(img.currentSrc||img.src)){img.setAttribute('crossorigin','anonymous');img.src=proxied}});
+    // Keep the exact same direct Sleeper image URLs used by manager/player profiles.
+    // html2canvas handles those URLs with useCORS; mutating the live image element can
+    // make Safari/mobile discard an otherwise valid Sleeper portrait.
+    imgs.forEach(img=>{imageState.push({img,src:img.getAttribute('src')||'',crossorigin:img.getAttribute('crossorigin')});img.loading='eager';img.decoding='async'});
     await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(resolve=>{const done=()=>resolve();img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,5000)})));
     await Promise.all(imgs.map(img=>typeof img.decode==='function'?img.decode().catch(()=>{}):Promise.resolve()));
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
