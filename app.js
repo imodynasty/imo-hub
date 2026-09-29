@@ -2394,29 +2394,57 @@ function rivalryGameId(row){
   const value=row?.game_id??row?.gameId??row?.event_id??row?.eventId;
   return value===null||value===undefined?'':String(value)
 }
+function rivalryScoringStat(row,key){
+  const direct=numericValue(row,[key]);
+  if(direct!==null)return direct;
+  const pts=numericValue(row,["pts","points"]),reb=numericValue(row,["reb","rebounds"]),ast=numericValue(row,["ast","assists"]),stl=numericValue(row,["stl","steals"]),blk=numericValue(row,["blk","blocks"]);
+  if(key==='dd'){const cats=[pts,reb,ast,stl,blk].filter(v=>v!==null&&v>=10).length;return cats>=2?1:0}
+  if(key==='td'){const cats=[pts,reb,ast,stl,blk].filter(v=>v!==null&&v>=10).length;return cats>=3?1:0}
+  const threshold=key.match(/^bonus_(pt|reb|ast)_(\d+)p$/);
+  if(threshold){const source=threshold[1]==='pt'?pts:threshold[1]==='reb'?reb:ast;return source!==null&&source>=Number(threshold[2])?1:0}
+  return null
+}
+function rivalryLeagueFantasyPoints(row,scoring){
+  // Historical Rivalry MVP/chemistry must use the scoring rules that were active
+  // in that IMO season. Sleeper's generic player-stat `fpts` field is not tied
+  // to this league's custom scoring, so re-score the selected NBA game from the
+  // Sleeper box-score fields instead of trusting that generic aggregate.
+  let total=0,matched=false;
+  Object.entries(scoring||{}).forEach(([key,multiplier])=>{
+    const mult=Number(multiplier);if(!Number.isFinite(mult)||mult===0)return;
+    const stat=rivalryScoringStat(row,key);
+    if(stat!==null&&Number.isFinite(Number(stat))){total+=Number(stat)*mult;matched=true}
+  });
+  return matched?total:null
+}
 function rivalrySelectedGameData(row,pid,season,bundle,week){
   const id=String(pid),scoring=bundle?.league?.scoring_settings||{},targetId=String(row?.starters_games?.[id]||'');
   const rows=safeArray(state.gameLogs?.[String(season)]?.[id]);
   if(targetId&&rows.length){
     const selectedRow=rows.find(game=>rivalryGameId(game)===targetId);
     if(selectedRow){
-      const selected=rawFantasyPoints(selectedRow,scoring),date=chemistryGameDateValue(selectedRow),weekKey=chemistryCalendarWeekKey(date);
-      const sameWeek=chemistryScoredGameRows(id,season,scoring).filter(game=>weekKey&&chemistryCalendarWeekKey(game.date)===weekKey);
-      const best=sameWeek.length?Math.max(...sameWeek.map(game=>Number(game.fpts)).filter(Number.isFinite)):null;
-      return{selected:Number.isFinite(selected)?selected:null,best:Number.isFinite(best)?best:null,gameId:targetId}
+      if(!gameWasPlayed(selectedRow))return{selected:null,best:null,gameId:targetId,played:false};
+      const selected=rivalryLeagueFantasyPoints(selectedRow,scoring),date=chemistryGameDateValue(selectedRow),weekKey=chemistryCalendarWeekKey(date);
+      const sameWeek=rows.filter(game=>gameWasPlayed(game)&&weekKey&&chemistryCalendarWeekKey(chemistryGameDateValue(game))===weekKey).map(game=>rivalryLeagueFantasyPoints(game,scoring)).filter(Number.isFinite);
+      const best=sameWeek.length?Math.max(...sameWeek):null;
+      return{selected:Number.isFinite(selected)?selected:null,best:Number.isFinite(best)?best:null,gameId:targetId,played:true}
     }
+    // Authenticated historical rows give us an exact selected NBA game. If that
+    // game cannot be found, do not fall back to the public matchup `players_points`
+    // value because that is precisely the source that produced the wrong history.
+    return{selected:null,best:null,gameId:targetId,played:false}
   }
   const selected=chemistrySelectedPoints(row,id);
-  if(!Number.isFinite(selected))return{selected:null,best:null,gameId:targetId||null};
+  if(!Number.isFinite(selected))return{selected:null,best:null,gameId:targetId||null,played:null};
   const anchor=chemistrySeasonAnchor(season),games=chemistryRowsForPlayerWeek(id,season,week,scoring,anchor,selected);
   const best=games.length?Math.max(...games.map(game=>Number(game.fpts)).filter(Number.isFinite)):null;
-  return{selected,best:Number.isFinite(best)?best:null,gameId:targetId||null}
+  return{selected,best:Number.isFinite(best)?best:null,gameId:targetId||null,played:null}
 }
 function rivalryMvp(meetings){
   const players=new Map();
   meetings.forEach(m=>[['a',m.rowA],['b',m.rowB]].forEach(([side,row])=>{
     if(!row)return;const starters=[...new Set(safeArray(row.starters).map(String).filter(Boolean))];
-    starters.forEach(pid=>{const data=rivalrySelectedGameData(row,pid,m.season,m.bundle,m.week),pts=data.selected;if(!Number.isFinite(pts))return;const key=`${side}:${pid}`,x=players.get(key)||{pid,side,total:0,best:-Infinity,matchups:0};x.total+=pts;x.best=Math.max(x.best,pts);x.matchups++;players.set(key,x)})
+    starters.forEach(pid=>{const data=rivalrySelectedGameData(row,pid,m.season,m.bundle,m.week),pts=data.selected;if(!Number.isFinite(pts))return;const key=`${side}:${pid}`,x=players.get(key)||{pid,side,total:0,best:-Infinity,matchups:0,scores:[]};x.total+=pts;x.best=Math.max(x.best,pts);x.matchups++;x.scores.push({season:String(m.season),week:Number(m.week),points:pts,gameId:data.gameId||null});players.set(key,x)})
   }));
   return [...players.values()].filter(x=>x.matchups>=2).sort((a,b)=>(b.total/b.matchups)-(a.total/a.matchups)||b.total-a.total||b.best-a.best)[0]||null
 }
@@ -2534,7 +2562,7 @@ function rivalryRenderReport(aId,bId){
   root.innerHTML=`<div class="rivalry-report-tools"><button type="button" class="rivalry-download-btn" data-download-rivalry aria-label="Download rivalry" title="Download rivalry">↓</button></div><div class="rivalry-export-area">
   <section class="rivalry-hero"><span class="eyebrow">ALL-TIME SERIES · ${meetings.length} MEETINGS</span><div class="rivalry-versus"><div>${rivalryManagerAvatar(a)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(a)}">${esc(aName)}</button></div><strong>${r.aWins}<i>—</i>${r.bWins}</strong><div>${rivalryManagerAvatar(b)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(b)}">${esc(bName)}</button></div></div>${r.draws?`<small class="rivalry-draws">${r.draws} draw${r.draws===1?'':'s'}</small>`:''}<div class="rivalry-total"><span>TOTAL H2H FPTS</span><b>${r.aTotal.toFixed(2)} <i>—</i> ${r.bTotal.toFixed(2)}</b></div><div class="rivalry-last-five"><span>LAST 5 · ${esc(aName)}</span><div>${recent.map((m,i)=>{const x=last5[i];return `<button type="button" class="${x==='W'?'win':x==='L'?'loss':'draw'}" data-rivalry-result="${i}" aria-label="View ${x} result">${x}</button>`}).join('')}</div></div><div class="rivalry-result-peek" id="rivalryResultPeek" hidden></div></section>
   <div class="rivalry-stat-grid"><div><span>CLOSEST GAME</span><strong>${closest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(closestWinner)}</b> · ${esc(closest.season)} · W${closest.week}</small></div><div><span>BIGGEST WIN</span><strong>${biggest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(biggestWinner)}</b> · ${esc(biggest.season)} · W${biggest.week}</small></div><div><span>CURRENT STREAK</span><strong>${lastResult==='D'?'D':`W${streak}`}</strong><small><b class="rivalry-team-green">${esc(streakOwner)}</b></small></div><div><span>PLAYOFF H2H</span><strong>${playA}–${playB}</strong><small>${playoffs.length?`<b class="rivalry-team-green">${esc(playA===playB?'Tied':playA>playB?aName:bName)}</b> · ${playoffs.length} meeting${playoffs.length===1?'':'s'}`:`No playoff meetings`}</small></div></div>
-  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo"><span class="rivalry-mvp-photo-fallback">${esc(playerName(mvp.pid).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase())}</span>${mvpImg?`<img src="${esc(mvpImg)}" alt="${esc(playerName(mvp.pid))}" loading="eager" decoding="async" onload="this.classList.add('is-loaded')" onerror="this.remove()">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
+  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo"><span class="rivalry-mvp-photo-fallback">${esc(playerName(mvp.pid).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase())}</span>${mvpImg?`<img src="${esc(mvpImg)}" alt="${esc(playerName(mvp.pid))}" loading="eager" decoding="async" onload="this.classList.add('is-loaded')" onerror="this.remove()">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p class="rivalry-mvp-team"><span>TEAM</span><strong>${esc(mvpOwner)}</strong></p><p class="rivalry-mvp-opponent">vs ${esc(mvp.side==='a'?bName:aName)} · ${mvp.matchups} H2H MATCHUP${mvp.matchups===1?'':'S'}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
   <section class="rivalry-card rivalry-chem-card"><div class="rivalry-card-heading"><span class="eyebrow">🧠 LINEUP DECISION-MAKING</span><h3>H2H Chemistry</h3><p>Only lineup starts made in meetings between these two franchises.</p></div><div class="rivalry-chemistry">${chem(aName,chemA)}<span class="rivalry-vs-mini">VS</span>${chem(bName,chemB)}</div></section>
   <section class="rivalry-split"><div class="rivalry-card rivalry-facts"><span class="eyebrow">📰 SERIES NOTES</span><h3>Rivalry Facts</h3>${facts.map(f=>`<p>${esc(f)}</p>`).join('')}</div><div class="rivalry-card rivalry-score"><span class="eyebrow">🔥 COMPETITIVE HISTORY</span><h3>Rivalry Score</h3><strong>${score}</strong><b>${rivalryScoreLabel(score)}</b><div><i style="width:${score}%"></i></div></div></section>
   <details class="rivalry-meetings"><summary>ALL ${meetings.length} MEETINGS <span>›</span></summary><div>${[...meetings].reverse().map(m=>`<div class="rivalry-meeting"><span>${esc(m.season)} · ${m.playoff?'PLAYOFFS · ':''}WEEK ${m.week}</span><p><b class="${m.aPts>m.bPts?'winner':''}">${esc(aName)} ${m.aPts.toFixed(2)}</b><i>—</i><b class="${m.bPts>m.aPts?'winner':''}">${m.bPts.toFixed(2)} ${esc(bName)}</b></p></div>`).join('')}</div></details></div>`;

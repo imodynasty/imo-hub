@@ -2670,3 +2670,7 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 .rivalry-mvp-photo img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center top!important;display:block!important;z-index:2!important}
 .rivalry-mvp-photo-fallback{z-index:1!important}
 @media(max-width:700px){.rivalry-mvp-photo img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important}}
+
+/* V3.5.33 — Rivalry MVP provenance + historical scoring clarity */
+.rivalry-mvp-team{display:flex!important;align-items:center;gap:7px;margin:3px 0 2px!important}.rivalry-mvp-team span{font-size:8px;font-weight:1000;letter-spacing:.12em;color:#7f8a9c}.rivalry-mvp-team strong{font-size:11px;color:#86efac}.rivalry-mvp-opponent{margin:0!important;color:#8d98a9!important;font-size:9px!important;font-weight:800;letter-spacing:.02em}
+@media(max-width:700px){.rivalry-mvp-team strong{font-size:10px}.rivalry-mvp-opponent{font-size:8px!important}}
