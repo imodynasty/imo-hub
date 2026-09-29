@@ -2653,3 +2653,10 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
   .rivalry-mvp-photo{width:62px!important;height:62px!important}
   .rivalry-mvp h3{font-size:1.25rem!important}
 }
+
+
+/* V3.5.21 — Rivalries export + alignment polish */
+.rivalry-last-five button{padding:0!important;box-sizing:border-box;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1!important}
+.rivalries-close{padding:0!important;box-sizing:border-box;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1!important;font-family:Arial,sans-serif!important}
+.rivalry-manager-link{appearance:none;border:0;background:transparent;color:inherit;padding:0;margin:0;font:inherit;font-weight:900;cursor:pointer;text-align:inherit;line-height:1.12}
+.rivalry-manager-link:hover,.rivalry-manager-link:focus-visible{color:#86efac;text-decoration:underline;text-underline-offset:3px}
