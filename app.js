@@ -2284,7 +2284,7 @@ function managerProfileHTML(managerId,sections=['overview']){
 }
 
 
-// V3.5.16 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// V3.5.17 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
 // starter and player-score data; no external scoring source is used.
 function rivalryManagerOptions(selected=''){
   return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
@@ -2325,16 +2325,21 @@ function rivalryGrandFinalMeetings(meetings){
   return meetings.filter(m=>{const final=finalResult(m.bundle);if(!final)return false;const pair=new Set([String(final.winner),String(final.runnerUp)]);return pair.has(String(m.aId))&&pair.has(String(m.bId))&&Number(m.week)>=Number(m.bundle?.league?.settings?.playoff_week_start||Infinity)})
 }
 function rivalryScore(meetings){
-  if(!meetings.length)return 0;const r=rivalryRecord(meetings),games=meetings.length,decided=r.aWins+r.bWins;
-  const meetingsScore=Math.min(20,games/4*20);
-  const balance=decided?10*(1-Math.abs(r.aWins-r.bWins)/decided):10;
-  const avgMargin=meetings.reduce((s,m)=>s+Math.abs(m.aPts-m.bPts),0)/games,marginScore=25*Math.max(0,1-avgMargin/50);
+  if(!meetings.length)return 0;const r=rivalryRecord(meetings),games=meetings.length;
+  // Series Balance (20): even = 20, falling linearly to 0 once either side leads by 5+ wins.
+  const seriesWinGap=Math.abs(r.aWins-r.bWins),balance=20*Math.max(0,1-seriesWinGap/5);
+  // Scoring Margin (40): 0 average margin = 40, falling linearly to 0 at 50+ FPTS.
+  const avgMargin=meetings.reduce((s,m)=>s+Math.abs(m.aPts-m.bPts),0)/games,marginScore=40*Math.max(0,1-avgMargin/50);
+  // Close Games (10): proportional share of meetings decided by fewer than 10 FPTS.
   const close=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<10).length,closeScore=10*(close/games);
-  const playoffs=meetings.filter(m=>m.playoff).length,playoffScore=Math.min(20,playoffs*5);
+  // Playoff History (10): 5 points per playoff meeting, capped at two meetings.
+  const playoffs=meetings.filter(m=>m.playoff).length,playoffScore=Math.min(10,playoffs*5);
+  // Recent Heat (20): competitiveness of the last four H2H meetings.
   const recent=meetings.slice(-4),recentDecided=recent.filter(m=>m.aPts!==m.bPts),recentAWins=recentDecided.filter(m=>m.aPts>m.bPts).length,recentBWins=recentDecided.length-recentAWins;
-  const recentHeat=recentDecided.length?15*(1-Math.abs(recentAWins-recentBWins)/recentDecided.length):15;
+  const recentHeat=recentDecided.length?20*(1-Math.abs(recentAWins-recentBWins)/recentDecided.length):20;
+  // Grand Final bonus (+10), with the displayed Rivalry Score still capped at 100.
   const grandFinalBonus=rivalryGrandFinalMeetings(meetings).length?10:0;
-  return Math.round(Math.max(0,Math.min(100,meetingsScore+balance+marginScore+closeScore+playoffScore+recentHeat+grandFinalBonus)))
+  return Math.round(Math.max(0,Math.min(100,balance+marginScore+closeScore+playoffScore+recentHeat+grandFinalBonus)))
 }
 function rivalryScoreLabel(score){if(score>=90)return'BLOOD FEUD';if(score>=75)return'HEATED';if(score>=55)return'RIVALRY';if(score>=30)return'HISTORY BUILDING';return'JUST GETTING STARTED'}
 function rivalryFacts(meetings,aName,bName){
