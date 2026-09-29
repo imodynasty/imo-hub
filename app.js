@@ -36,7 +36,7 @@ async function statsJSON(url){if(state.statsRequestCache.has(url))return state.s
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3528',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3529',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1422,46 +1422,15 @@ function managerHeadToHead(id){
   }));
   return Object.values(records).sort((a,b)=>b.games-a.games||managerName(a.oppId).localeCompare(managerName(b.oppId)))
 }
-const HISTORICAL_FRANCHISE_ALIASES={
-  // A manager replacement renamed this franchise; its earlier seasons still
-  // belong to the same IMO franchise history.
-  pritchplease:'marajuana'
-};
-function historicalFranchiseNameForRoster(bundle,rosterId){
-  const rid=String(rosterId??'');if(!rid)return'';
-  const historicalOwner=String(bundle?.ownerByRoster?.[rid]??'');
-  if(historicalOwner){
-    const mapped=String(bundle?.managerNameMap?.[historicalOwner]??'').trim();
-    if(mapped)return mapped;
-    const user=safeArray(bundle?.users).find(u=>String(u?.user_id??'')===historicalOwner)||{};
-    const userName=String(user?.metadata?.team_name||user?.display_name||'').trim();
-    if(userName)return userName;
-  }
-  return''
-}
 function historicalManagerIdForRoster(bundle,rosterId){
   const rid=String(rosterId??'');if(!rid)return'';
-  // V3.5.28 — roster_id is only unique INSIDE a Sleeper league. It is not a
-  // safe franchise identifier across renewed leagues. Resolve each historical
-  // row from the team identity stored in that historical league, then map that
-  // identity onto the current IMO franchise list. This prevents an old roster
-  // slot from being inherited by a different current team.
-  const historicalName=historicalFranchiseNameForRoster(bundle,rid);
-  if(historicalName){
-    const rawKey=normaliseTeamKey(historicalName),targetKey=HISTORICAL_FRANCHISE_ALIASES[rawKey]||rawKey;
-    for(const manager of state.managers.values()){
-      if(normaliseTeamKey(manager?.name)===targetKey)return String(manager.id)
-    }
-  }
-  // Safe fallback only when the historical Sleeper owner is still a current
-  // manager AND the historical/current team identity agrees. Never map by
-  // roster number alone.
+  // V3.5.29 — Rivalries are manager-tenure based. A historical matchup counts
+  // only when that roster was owned by the SAME Sleeper user who manages the
+  // current team. This deliberately excludes results produced by a previous
+  // manager of the same franchise/roster slot (for example, Dub Dub E only
+  // receives @jchristie40's games, never the prior manager's games).
   const historicalOwner=String(bundle?.ownerByRoster?.[rid]??'');
-  if(historicalOwner&&state.managers.has(historicalOwner)){
-    const current=state.managers.get(historicalOwner),historicalKey=normaliseTeamKey(historicalName),currentKey=normaliseTeamKey(current?.name);
-    if(!historicalKey||historicalKey===currentKey)return historicalOwner
-  }
-  return''
+  return historicalOwner&&state.managers.has(historicalOwner)?historicalOwner:''
 }
 function completedMatchupsForBundle(bundle){
   const cacheKey=String(bundle?.league?.league_id||bundle?.league?.season||'unknown');
@@ -3953,21 +3922,17 @@ function openGlobalTradeResult(key){const trade=state.trades.find(t=>globalTrade
 function launchGlobalSearchEntity(action,id){if(action==='trade'){openGlobalTradeResult(id);return}closeGlobalSearch();if(action==='player')openPlayerHistory(id);else if(action==='manager')openManagerProfile(id);else if(action==='pick')openPickHistory(id)}
 
 async function discoverCanonicalLeagueChain(currentLeague){
-  // Sleeper renewals carry the authoritative previous_league_id. Follow that
-  // chain instead of trusting manually maintained historical IDs.
-  const ids=[String(CONFIG.currentLeagueId)],seen=new Set(ids);let league=currentLeague||null;
-  for(let depth=0;depth<4;depth++){
-    let prev=String(league?.previous_league_id||'').trim();
-    if(!prev||prev==='0'||seen.has(prev))break;
-    ids.push(prev);seen.add(prev);
-    league=await getJSON(`${CONFIG.api}/league/${prev}`,true);
-    if(!league)break;
-  }
-  // Keep configured IDs only as a fallback when Sleeper does not expose a
-  // renewal chain (older/test leagues can omit previous_league_id).
-  if(ids.length===1){for(const id of CONFIG.leagueIds){const key=String(id);if(key&&!seen.has(key)){ids.push(key);seen.add(key)}}}
-  CONFIG.leagueIds=ids;
-  return ids
+  // V3.5.29 — The IMO archive uses explicitly verified league IDs. Do NOT let
+  // Sleeper previous_league_id replace them: a renewal chain can point at a
+  // predecessor/test league whose matchup rows are not the IMO season archive.
+  // That was the source of historical Rivalry scores coming from the wrong
+  // league while still looking structurally valid.
+  const configured=[String(CONFIG.currentLeagueId),...CONFIG.leagueIds.map(String)]
+    .filter((id,i,arr)=>id&&arr.indexOf(id)===i);
+  CONFIG.leagueIds=configured;
+  const prev=String(currentLeague?.previous_league_id||'').trim();
+  if(prev&&prev!=='0'&&!configured.includes(prev))console.warn('IMO history: ignoring unverified previous_league_id',prev);
+  return configured
 }
 function priorityHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(0,1)}
 function olderHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(1)}
