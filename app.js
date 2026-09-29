@@ -19,7 +19,7 @@ const CANONICAL_DRAFT_COLUMNS={
 function normaliseTeamKey(name){return String(name||"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 function canonicalDraftSlot(season,teamName){return CANONICAL_DRAFT_COLUMNS[String(season)]?.[normaliseTeamKey(teamName)]??null}
 
-const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",profileChemistryView:"all",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,h2hProjections:{},h2hProjectionKey:"",h2hProjectionLoading:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
+const state={jsonRequestCache:new Map(),globalSearchIndex:null,league:null,currentUsers:[],currentRosters:[],managers:new Map(),trades:[],selectedWindow:"14",players:{},bundles:[],modelBundle:null,playerAverages:{},previousPowerRanks:{},heatmapExpanded:false,draftPickMap:{},previousPlayerAverages:{},votePlayers:[],activeWindow:"14",biggestTradesExpanded:false,profileAverageSeason:"2025",profileChemistryView:"all",exactSeasonAverages:{},gameLogAverages:{},gameLogMeta:{},seasonTotalAverages:{},seasonTotalMeta:{},gameLogs:{},playerInterest:[],profileHTMLCache:new Map(),profilePrewarmQueued:false,profileBuilds:new Map(),statsRequestCache:new Map(),seasonTotalsLoading:false,draftSelections:[],allDraftSelections:[],oddsMovement:null,sportState:null,h2hRefreshTimer:null,h2hRefreshBusy:false,h2hProjections:{},h2hProjectionKey:"",h2hProjectionLoading:false,fullPlayerDirectoryLoaded:false,fullPlayerDirectoryPromise:null,gameLogFeaturesPromise:null,lazyHomepageModules:new Map(),lazyHomepageObserver:null,historyReady:false,profilePriorityReady:false,profilePriorityPromise:null,olderHistoryPromise:null,snapshotApplied:false,marketReady:false,verifiedMarketHTML:null,verifiedMarketSavedAt:0,renderGeneration:0,renderQueue:new Set(),renderQueueScheduled:false,renderStats:{flushes:0,modules:0},rivalryHistoryArchive:null,computedCache:{seasonAverages:new Map(),managerTrades:new Map(),tradeSide:new Map(),completedMatchups:new Map(),tendencyLeague:null,managerGrades:null}};
 const $=id=>document.getElementById(id),WL={"14":"14 days","28":"28 days","season":"2026 season","all":"All time"};
 try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key&&key.startsWith('imo-profile-'))sessionStorage.removeItem(key)}}catch(_){ }
 function resetComputedCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerTrades.clear();state.computedCache.tradeSide.clear();state.computedCache.completedMatchups.clear();state.computedCache.tendencyLeague=null;state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
@@ -32,11 +32,22 @@ async function getJSON(url,optional=false){
   return request;
 }
 async function statsJSON(url){if(state.statsRequestCache.has(url))return state.statsRequestCache.get(url);const request=getJSON(url,true).finally(()=>{});state.statsRequestCache.set(url,request);return request}
+async function loadRivalryHistoryArchive(){
+  if(state.rivalryHistoryArchive)return state.rivalryHistoryArchive;
+  const payload=await getJSON('assets/rivalry-history.json',true);
+  state.rivalryHistoryArchive=payload&&payload.leagues?payload:{leagues:{}};
+  return state.rivalryHistoryArchive
+}
+function archivedMatchupRowsForBundle(bundle){
+  const leagueId=String(bundle?.league?.league_id||''),rounds=state.rivalryHistoryArchive?.leagues?.[leagueId]?.rounds;
+  if(!rounds||typeof rounds!=='object')return null;
+  return Object.entries(rounds).flatMap(([week,rows])=>safeArray(rows).map(row=>({...row,week:Number(week)})))
+}
 
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3530',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3532',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1458,21 +1469,31 @@ function canonicalMatchupScore(row){
 function completedMatchupsForBundle(bundle){
   const cacheKey=String(bundle?.league?.league_id||bundle?.league?.season||'unknown');
   if(state.computedCache.completedMatchups.has(cacheKey))return state.computedCache.completedMatchups.get(cacheKey);
-  const byWeek={};matchupRows(bundle).forEach(row=>(byWeek[Number(row.week)]??=[]).push(row));
+
+  // V3.5.32 — historical NBA rivalry results must come from Sleeper's
+  // authenticated matchup_legs ledger. The public /matchups/{week} endpoint
+  // returns a different NBA weekly total and does not preserve Game Pick Mode
+  // selections. The bundled archive contains Sleeper's exact historical
+  // matchup_legs points + starters_games for the two completed IMO seasons.
+  const archived=archivedMatchupRowsForBundle(bundle);
+  const sourceRows=archived||matchupRows(bundle);
+  const byWeek={};sourceRows.forEach(row=>(byWeek[Number(row.week)]??=[]).push(row));
   const games=[];
+
   Object.entries(byWeek).forEach(([week,rows])=>{
     const groups={};rows.forEach(row=>{if(row.matchup_id!=null)(groups[String(row.matchup_id)]??=[]).push(row)});
     Object.entries(groups).forEach(([matchupId,group])=>{
-      // A canonical H2H meeting must be exactly two Sleeper roster rows. Never
-      // guess by taking the first two rows from an ambiguous group.
       if(group.length!==2){if(group.length>2)console.warn('IMO history: rejected ambiguous matchup group',{league:cacheKey,week:Number(week),matchupId,rows:group.length});return}
-      const [a,b]=group,aPts=canonicalMatchupScore(a),bPts=canonicalMatchupScore(b);
+      const [a,b]=group;
+      const aPts=archived?Number(a.points):canonicalMatchupScore(a);
+      const bPts=archived?Number(b.points):canonicalMatchupScore(b);
       if(!Number.isFinite(aPts)||!Number.isFinite(bPts)||(aPts===0&&bPts===0))return;
       const aId=historicalManagerIdForRoster(bundle,a.roster_id),bId=historicalManagerIdForRoster(bundle,b.roster_id);
       if(!aId||!bId||aId===bId)return;
       games.push({
         leagueId:cacheKey,season:String(bundle.league?.season||''),week:Number(week),matchupId,
-        aId,bId,aRosterId:String(a.roster_id),bRosterId:String(b.roster_id),aPts,bPts,rowA:a,rowB:b
+        aId,bId,aRosterId:String(a.roster_id),bRosterId:String(b.roster_id),aPts,bPts,rowA:a,rowB:b,
+        source:archived?'matchup_legs':'public_matchups'
       });
     });
   });
@@ -2369,18 +2390,40 @@ function rivalryMeetings(aId,bId){
   return sorted
 }
 function rivalryRecord(meetings){let aWins=0,bWins=0,draws=0,aTotal=0,bTotal=0;meetings.forEach(m=>{aTotal+=m.aPts;bTotal+=m.bPts;if(m.aPts>m.bPts)aWins++;else if(m.bPts>m.aPts)bWins++;else draws++});return{aWins,bWins,draws,aTotal,bTotal}}
+function rivalryGameId(row){
+  const value=row?.game_id??row?.gameId??row?.event_id??row?.eventId;
+  return value===null||value===undefined?'':String(value)
+}
+function rivalrySelectedGameData(row,pid,season,bundle,week){
+  const id=String(pid),scoring=bundle?.league?.scoring_settings||{},targetId=String(row?.starters_games?.[id]||'');
+  const rows=safeArray(state.gameLogs?.[String(season)]?.[id]);
+  if(targetId&&rows.length){
+    const selectedRow=rows.find(game=>rivalryGameId(game)===targetId);
+    if(selectedRow){
+      const selected=rawFantasyPoints(selectedRow,scoring),date=chemistryGameDateValue(selectedRow),weekKey=chemistryCalendarWeekKey(date);
+      const sameWeek=chemistryScoredGameRows(id,season,scoring).filter(game=>weekKey&&chemistryCalendarWeekKey(game.date)===weekKey);
+      const best=sameWeek.length?Math.max(...sameWeek.map(game=>Number(game.fpts)).filter(Number.isFinite)):null;
+      return{selected:Number.isFinite(selected)?selected:null,best:Number.isFinite(best)?best:null,gameId:targetId}
+    }
+  }
+  const selected=chemistrySelectedPoints(row,id);
+  if(!Number.isFinite(selected))return{selected:null,best:null,gameId:targetId||null};
+  const anchor=chemistrySeasonAnchor(season),games=chemistryRowsForPlayerWeek(id,season,week,scoring,anchor,selected);
+  const best=games.length?Math.max(...games.map(game=>Number(game.fpts)).filter(Number.isFinite)):null;
+  return{selected,best:Number.isFinite(best)?best:null,gameId:targetId||null}
+}
 function rivalryMvp(meetings){
   const players=new Map();
   meetings.forEach(m=>[['a',m.rowA],['b',m.rowB]].forEach(([side,row])=>{
     if(!row)return;const starters=[...new Set(safeArray(row.starters).map(String).filter(Boolean))];
-    starters.forEach(pid=>{const pts=chemistrySelectedPoints(row,pid);if(!Number.isFinite(pts))return;const key=`${side}:${pid}`,x=players.get(key)||{pid,side,total:0,best:-Infinity,matchups:0};x.total+=pts;x.best=Math.max(x.best,pts);x.matchups++;players.set(key,x)})
+    starters.forEach(pid=>{const data=rivalrySelectedGameData(row,pid,m.season,m.bundle,m.week),pts=data.selected;if(!Number.isFinite(pts))return;const key=`${side}:${pid}`,x=players.get(key)||{pid,side,total:0,best:-Infinity,matchups:0};x.total+=pts;x.best=Math.max(x.best,pts);x.matchups++;players.set(key,x)})
   }));
   return [...players.values()].filter(x=>x.matchups>=2).sort((a,b)=>(b.total/b.matchups)-(a.total/a.matchups)||b.total-a.total||b.best-a.best)[0]||null
 }
 function rivalryChemistryForSide(meetings,side){
   let captured=0,available=0,perfect=0,starts=0;
-  meetings.forEach(m=>{const row=side==='a'?m.rowA:m.rowB,bundle=m.bundle;if(!row||!bundle)return;const season=m.season,scoring=bundle.league?.scoring_settings||{},anchor=chemistrySeasonAnchor(season);
-    [...new Set(safeArray(row.starters).map(String).filter(Boolean))].forEach(pid=>{const selected=chemistrySelectedPoints(row,pid);if(!Number.isFinite(selected))return;const games=chemistryRowsForPlayerWeek(pid,season,m.week,scoring,anchor,selected);if(!games.length)return;const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!(best>0))return;captured+=selected;available+=best;starts++;if(Math.abs(selected-best)<.05)perfect++})
+  meetings.forEach(m=>{const row=side==='a'?m.rowA:m.rowB,bundle=m.bundle;if(!row||!bundle)return;const season=m.season;
+    [...new Set(safeArray(row.starters).map(String).filter(Boolean))].forEach(pid=>{const data=rivalrySelectedGameData(row,pid,season,bundle,m.week),selected=data.selected,best=data.best;if(!Number.isFinite(selected)||!(best>0))return;captured+=selected;available+=best;starts++;if(Math.abs(selected-best)<.05)perfect++})
   });
   return{pct:available>0?Math.max(0,Math.min(100,captured/available*100)):null,captured,available,perfect,starts}
 }
@@ -3968,6 +4011,7 @@ function ensureOlderHistoryLoaded(){
 }
 function scheduleOlderHistoryLoad(){if(state.historyReady)return;const run=()=>ensureOlderHistoryLoaded().catch(error=>console.warn('Deferred older history unavailable:',error));if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:18000});else setTimeout(run,10000)}
 async function load(){
+  await loadRivalryHistoryArchive();
   const status=$('statusText');if(status)status.textContent='Connecting…';safeRender('ticker bootstrap',renderTicker);safeRender('verified market bootstrap',renderVerifiedMarketFallback);
   const snapshotPromise=hubCacheRead().catch(()=>null);
   const corePromise=loadCoreSeason(CONFIG.currentLeagueId);
@@ -4179,52 +4223,3 @@ document.addEventListener("focusin",e=>{const link=e.target.closest?.(".manager-
 document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
-
-// V3.5.31 TEMPORARY RAW SLEEPER HISTORY EXPORT
-// Downloads fresh Sleeper payloads so historical Rivalry scoring can be verified
-// against the exact API response rather than inferred from Hub-derived values.
-async function downloadRawRivalryHistoryDiagnostic(){
-  const btn=document.getElementById('rawRivalryDiagnosticButton');
-  const original=btn?.textContent||'DOWNLOAD RAW RIVALRY DATA';
-  try{
-    if(btn){btn.disabled=true;btn.textContent='FETCHING SLEEPER DATA…'}
-    const leagueIds=['1138349648558624768','1212553673821929472'];
-    const payload={diagnostic:'IMO Dynasty raw Sleeper rivalry history',version:'3.5.31',generatedAt:new Date().toISOString(),leagues:[]};
-    for(const leagueId of leagueIds){
-      const [league,users,rosters]=await Promise.all([
-        getJSON(`${CONFIG.api}/league/${leagueId}`,true),
-        getJSON(`${CONFIG.api}/league/${leagueId}/users`,true),
-        getJSON(`${CONFIG.api}/league/${leagueId}/rosters`,true)
-      ]);
-      const weeks=[];
-      for(let week=1;week<=23;week++){
-        const rows=await getJSON(`${CONFIG.api}/league/${leagueId}/matchups/${week}`,true);
-        if(Array.isArray(rows)&&rows.length){
-          weeks.push({week,rows:rows.map(r=>({
-            roster_id:r.roster_id??null,matchup_id:r.matchup_id??null,
-            points:r.points??null,custom_points:r.custom_points??null,
-            starters:r.starters??null,starters_points:r.starters_points??null,
-            players:r.players??null,players_points:r.players_points??null
-          }))});
-        }
-      }
-      payload.leagues.push({league,users,rosters,weeks});
-    }
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=`imo-raw-rivalry-history-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
-    if(btn)btn.textContent='DOWNLOADED ✓';
-  }catch(error){
-    console.error('Raw rivalry diagnostic failed',error);
-    if(btn){btn.disabled=false;btn.textContent='FAILED — TRY AGAIN'}
-    alert('Could not download the raw Sleeper history. Please try again.');
-  }finally{
-    setTimeout(()=>{if(btn){btn.disabled=false;btn.textContent=original}},2500);
-  }
-}
-function installRawRivalryDiagnosticButton(){
-  if(document.getElementById('rawRivalryDiagnosticButton'))return;
-  const btn=document.createElement('button');btn.id='rawRivalryDiagnosticButton';btn.type='button';btn.textContent='DOWNLOAD RAW RIVALRY DATA';
-  btn.style.cssText="position:fixed;right:14px;bottom:14px;z-index:2147483647;padding:12px 14px;border:1px solid rgba(31,215,255,.55);border-radius:10px;background:#101722;color:#fff;font:800 11px/1.1 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.08em;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer";
-  btn.addEventListener('click',downloadRawRivalryHistoryDiagnostic);document.body.appendChild(btn);
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installRawRivalryDiagnosticButton);else installRawRivalryDiagnosticButton();
