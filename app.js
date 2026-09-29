@@ -36,7 +36,7 @@ async function statsJSON(url){if(state.statsRequestCache.has(url))return state.s
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3361',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3526',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1412,7 +1412,37 @@ function managerHeadToHead(id){
   state.bundles.forEach(bundle=>{const byWeek={};matchupRows(bundle).forEach(row=>(byWeek[row.week]??=[]).push(row));Object.values(byWeek).forEach(weekRows=>{const groups={};weekRows.forEach(row=>{if(row.matchup_id!=null)(groups[row.matchup_id]??=[]).push(row)});Object.values(groups).forEach(group=>{const mine=group.find(row=>String(bundle.ownerByRoster?.[String(row.roster_id)])===String(id)),opp=group.find(row=>row!==mine);if(!mine||!opp)return;const oppId=String(bundle.ownerByRoster?.[String(opp.roster_id)]||"");if(!oppId||oppId===String(id)||!state.managers.has(oppId))return;const minePts=Number(mine.points),oppPts=Number(opp.points);if(!Number.isFinite(minePts)||!Number.isFinite(oppPts)||(minePts===0&&oppPts===0))return;const rec=records[oppId]??={oppId,wins:0,losses:0,draws:0,games:0};rec.games++;if(minePts>oppPts)rec.wins++;else if(minePts<oppPts)rec.losses++;else rec.draws++})})});
   return Object.values(records).sort((a,b)=>b.games-a.games||managerName(a.oppId).localeCompare(managerName(b.oppId)))
 }
-function completedMatchupsForBundle(bundle){const cacheKey=String(bundle?.league?.league_id||bundle?.league?.season||'unknown');if(state.computedCache.completedMatchups.has(cacheKey))return state.computedCache.completedMatchups.get(cacheKey);const byWeek={};matchupRows(bundle).forEach(row=>(byWeek[row.week]??=[]).push(row));const games=[];Object.entries(byWeek).forEach(([week,rows])=>{const groups={};rows.forEach(row=>{if(row.matchup_id!=null)(groups[row.matchup_id]??=[]).push(row)});Object.values(groups).forEach(group=>{if(group.length<2)return;const a=group[0],b=group[1],aPts=Number(a.points),bPts=Number(b.points);if(!Number.isFinite(aPts)||!Number.isFinite(bPts)||(aPts===0&&bPts===0))return;const aId=String(bundle.ownerByRoster?.[String(a.roster_id)]||''),bId=String(bundle.ownerByRoster?.[String(b.roster_id)]||'');if(!aId||!bId||aId===bId)return;games.push({season:String(bundle.league?.season||''),week:Number(week),aId,bId,aPts,bPts})})});state.computedCache.completedMatchups.set(cacheKey,games);return games}
+function historicalManagerIdForRoster(bundle,rosterId){
+  const rid=String(rosterId??'');if(!rid)return'';
+  // Primary identity is the Sleeper user who owned this roster in that exact
+  // historical league. This is the same identity shown in Sleeper Schedule.
+  const historical=String(bundle?.ownerByRoster?.[rid]||'');
+  if(historical)return historical;
+  return''
+}
+function completedMatchupsForBundle(bundle){
+  const cacheKey=String(bundle?.league?.league_id||bundle?.league?.season||'unknown');
+  if(state.computedCache.completedMatchups.has(cacheKey))return state.computedCache.completedMatchups.get(cacheKey);
+  const byWeek={};matchupRows(bundle).forEach(row=>(byWeek[Number(row.week)]??=[]).push(row));
+  const games=[];
+  Object.entries(byWeek).forEach(([week,rows])=>{
+    const groups={};rows.forEach(row=>{if(row.matchup_id!=null)(groups[String(row.matchup_id)]??=[]).push(row)});
+    Object.entries(groups).forEach(([matchupId,group])=>{
+      // A canonical H2H meeting must be exactly two Sleeper roster rows. Never
+      // guess by taking the first two rows from an ambiguous group.
+      if(group.length!==2){if(group.length>2)console.warn('IMO history: rejected ambiguous matchup group',{league:cacheKey,week:Number(week),matchupId,rows:group.length});return}
+      const [a,b]=group,aPts=Number(a.points),bPts=Number(b.points);
+      if(!Number.isFinite(aPts)||!Number.isFinite(bPts)||(aPts===0&&bPts===0))return;
+      const aId=historicalManagerIdForRoster(bundle,a.roster_id),bId=historicalManagerIdForRoster(bundle,b.roster_id);
+      if(!aId||!bId||aId===bId)return;
+      games.push({
+        leagueId:cacheKey,season:String(bundle.league?.season||''),week:Number(week),matchupId,
+        aId,bId,aRosterId:String(a.roster_id),bRosterId:String(b.roster_id),aPts,bPts,rowA:a,rowB:b
+      });
+    });
+  });
+  state.computedCache.completedMatchups.set(cacheKey,games);return games
+}
 function managerBiggestResult(id){let win=null,loss=null;state.bundles.forEach(bundle=>completedMatchupsForBundle(bundle).forEach(g=>{let mine,opp,oppId;if(g.aId===String(id)){mine=g.aPts;opp=g.bPts;oppId=g.bId}else if(g.bId===String(id)){mine=g.bPts;opp=g.aPts;oppId=g.aId}else return;if(!state.managers.has(oppId))return;const margin=mine-opp,item={margin:Math.abs(margin),oppId,week:g.week,season:g.season,myPts:mine,oppPts:opp};if(margin>0&&(!win||item.margin>win.margin))win=item;if(margin<0&&(!loss||item.margin>loss.margin))loss=item}));return{win,loss}}
 function finalResult(bundle){const bracket=bundle.winnersBracket||[];if(!bracket.length)return null;const maxRound=Math.max(...bracket.map(x=>Number(x.r)||0)),finals=bracket.filter(x=>Number(x.r)===maxRound&&x.w!=null&&x.l!=null);const final=finals[0];if(!final)return null;return{winner:String(bundle.ownerByRoster?.[String(final.w)]||''),runnerUp:String(bundle.ownerByRoster?.[String(final.l)]||'')}}
 function regularSeasonWinnerIds(bundle){const start=Number(bundle.league?.settings?.playoff_week_start)||Infinity,through=Number.isFinite(start)?start-1:Infinity,table=standingsTable(bundle,through);if(!table.length)return[];const best=table[0];return table.filter(x=>x.wins===best.wins&&x.pts===best.pts).map(x=>String(x.id))}
@@ -2284,7 +2314,7 @@ function managerProfileHTML(managerId,sections=['overview']){
 }
 
 
-// V3.5.24 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// V3.5.26 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
 // starter and player-score data; no external scoring source is used.
 function rivalryManagerOptions(selected=''){
   return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
@@ -2294,12 +2324,14 @@ function rivalryMeetings(aId,bId){
   state.bundles.forEach(bundle=>completedMatchupsForBundle(bundle).forEach(game=>{
     if(!((game.aId===a&&game.bId===b)||(game.aId===b&&game.bId===a)))return;
     const aPts=game.aId===a?game.aPts:game.bPts,bPts=game.aId===a?game.bPts:game.aPts;
-    const rowA=safeArray(bundle.matchups).find(r=>Number(r.week)===Number(game.week)&&String(bundle.ownerByRoster?.[String(r.roster_id)]||'')===a);
-    const rowB=safeArray(bundle.matchups).find(r=>Number(r.week)===Number(game.week)&&String(bundle.ownerByRoster?.[String(r.roster_id)]||'')===b);
+    const rowA=game.aId===a?game.rowA:game.rowB;
+    const rowB=game.aId===a?game.rowB:game.rowA;
     const playoffStart=Number(bundle.league?.settings?.playoff_week_start)||Infinity;
     out.push({season:String(game.season),week:Number(game.week),aId:a,bId:b,aPts:Number(aPts),bPts:Number(bPts),rowA,rowB,bundle,playoff:Number(game.week)>=playoffStart});
   }));
-  return out.sort((x,y)=>Number(x.season)-Number(y.season)||x.week-y.week)
+  const sorted=out.sort((x,y)=>Number(x.season)-Number(y.season)||x.week-y.week);
+  const seen=new Set();for(const m of sorted){const key=`${m.bundle?.league?.league_id}|${m.week}|${m.aId}|${m.bId}`;if(seen.has(key))console.warn('IMO rivalry ledger: duplicate meeting',key);seen.add(key);if(!Number.isFinite(m.aPts)||!Number.isFinite(m.bPts))console.warn('IMO rivalry ledger: invalid score',m)}
+  return sorted
 }
 function rivalryRecord(meetings){let aWins=0,bWins=0,draws=0,aTotal=0,bTotal=0;meetings.forEach(m=>{aTotal+=m.aPts;bTotal+=m.bPts;if(m.aPts>m.bPts)aWins++;else if(m.bPts>m.aPts)bWins++;else draws++});return{aWins,bWins,draws,aTotal,bTotal}}
 function rivalryMvp(meetings){
@@ -3877,6 +3909,23 @@ function closeGlobalSearch(){const modal=$("globalSearchModal");if(!modal)return
 function openGlobalTradeResult(key){const trade=state.trades.find(t=>globalTradeKey(t)===String(key)),target=$("globalSearchResults");if(!trade||!target)return;target.innerHTML=`<div class="global-search-trade-view"><button type="button" class="global-search-back" data-global-search-back>← Back to results</button><span class="global-search-type type-trade">Trade</span><h3>${esc(globalTradeLabel(trade))}</h3><p>${esc(fmt(trade.created))} · ${esc(trade.season_label||'League trade')}</p><div class="trade-detail-body">${tradeDetailsHTML(trade)}</div></div>`}
 function launchGlobalSearchEntity(action,id){if(action==='trade'){openGlobalTradeResult(id);return}closeGlobalSearch();if(action==='player')openPlayerHistory(id);else if(action==='manager')openManagerProfile(id);else if(action==='pick')openPickHistory(id)}
 
+async function discoverCanonicalLeagueChain(currentLeague){
+  // Sleeper renewals carry the authoritative previous_league_id. Follow that
+  // chain instead of trusting manually maintained historical IDs.
+  const ids=[String(CONFIG.currentLeagueId)],seen=new Set(ids);let league=currentLeague||null;
+  for(let depth=0;depth<4;depth++){
+    let prev=String(league?.previous_league_id||'').trim();
+    if(!prev||prev==='0'||seen.has(prev))break;
+    ids.push(prev);seen.add(prev);
+    league=await getJSON(`${CONFIG.api}/league/${prev}`,true);
+    if(!league)break;
+  }
+  // Keep configured IDs only as a fallback when Sleeper does not expose a
+  // renewal chain (older/test leagues can omit previous_league_id).
+  if(ids.length===1){for(const id of CONFIG.leagueIds){const key=String(id);if(key&&!seen.has(key)){ids.push(key);seen.add(key)}}}
+  CONFIG.leagueIds=ids;
+  return ids
+}
 function priorityHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(0,1)}
 function olderHistoricalLeagueIds(){return CONFIG.leagueIds.filter(id=>String(id)!==String(CONFIG.currentLeagueId)).slice(1)}
 function ensureOlderHistoryLoaded(){
@@ -3902,6 +3951,7 @@ async function load(){
     }
 
     const core=await corePromise;if(!core)throw new Error('No Sleeper league data could be loaded');
+    await discoverCanonicalLeagueChain(core.league);
     if(!state.snapshotApplied){
       state.bundles=[core];state.league=core.league;state.currentUsers=core.users||[];state.currentRosters=core.rosters||[];state.trades=[];buildManagers();
       instantManagerShell();document.documentElement.classList.add('imo-interactive');
