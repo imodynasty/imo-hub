@@ -36,7 +36,7 @@ async function statsJSON(url){if(state.statsRequestCache.has(url))return state.s
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3526',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3528',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1422,15 +1422,44 @@ function managerHeadToHead(id){
   }));
   return Object.values(records).sort((a,b)=>b.games-a.games||managerName(a.oppId).localeCompare(managerName(b.oppId)))
 }
+const HISTORICAL_FRANCHISE_ALIASES={
+  // A manager replacement renamed this franchise; its earlier seasons still
+  // belong to the same IMO franchise history.
+  pritchplease:'marajuana'
+};
+function historicalFranchiseNameForRoster(bundle,rosterId){
+  const rid=String(rosterId??'');if(!rid)return'';
+  const historicalOwner=String(bundle?.ownerByRoster?.[rid]??'');
+  if(historicalOwner){
+    const mapped=String(bundle?.managerNameMap?.[historicalOwner]??'').trim();
+    if(mapped)return mapped;
+    const user=safeArray(bundle?.users).find(u=>String(u?.user_id??'')===historicalOwner)||{};
+    const userName=String(user?.metadata?.team_name||user?.display_name||'').trim();
+    if(userName)return userName;
+  }
+  return''
+}
 function historicalManagerIdForRoster(bundle,rosterId){
   const rid=String(rosterId??'');if(!rid)return'';
-  // V3.5.27 — Rivalry history belongs to the FRANCHISE SLOT, not whichever
-  // Sleeper user happened to own that slot in a historical season. Sleeper
-  // renewals preserve roster_id as the franchise lineage, while owner_id can
-  // change after a manager replacement. Resolve the historical roster_id to
-  // the manager who owns that same franchise slot in the current league.
-  for(const manager of state.managers.values()){
-    if(String(manager?.roster?.roster_id??'')===rid)return String(manager.id)
+  // V3.5.28 — roster_id is only unique INSIDE a Sleeper league. It is not a
+  // safe franchise identifier across renewed leagues. Resolve each historical
+  // row from the team identity stored in that historical league, then map that
+  // identity onto the current IMO franchise list. This prevents an old roster
+  // slot from being inherited by a different current team.
+  const historicalName=historicalFranchiseNameForRoster(bundle,rid);
+  if(historicalName){
+    const rawKey=normaliseTeamKey(historicalName),targetKey=HISTORICAL_FRANCHISE_ALIASES[rawKey]||rawKey;
+    for(const manager of state.managers.values()){
+      if(normaliseTeamKey(manager?.name)===targetKey)return String(manager.id)
+    }
+  }
+  // Safe fallback only when the historical Sleeper owner is still a current
+  // manager AND the historical/current team identity agrees. Never map by
+  // roster number alone.
+  const historicalOwner=String(bundle?.ownerByRoster?.[rid]??'');
+  if(historicalOwner&&state.managers.has(historicalOwner)){
+    const current=state.managers.get(historicalOwner),historicalKey=normaliseTeamKey(historicalName),currentKey=normaliseTeamKey(current?.name);
+    if(!historicalKey||historicalKey===currentKey)return historicalOwner
   }
   return''
 }
@@ -1458,7 +1487,7 @@ function completedMatchupsForBundle(bundle){
   state.computedCache.completedMatchups.set(cacheKey,games);return games
 }
 function managerBiggestResult(id){let win=null,loss=null;state.bundles.forEach(bundle=>completedMatchupsForBundle(bundle).forEach(g=>{let mine,opp,oppId;if(g.aId===String(id)){mine=g.aPts;opp=g.bPts;oppId=g.bId}else if(g.bId===String(id)){mine=g.bPts;opp=g.aPts;oppId=g.aId}else return;if(!state.managers.has(oppId))return;const margin=mine-opp,item={margin:Math.abs(margin),oppId,week:g.week,season:g.season,myPts:mine,oppPts:opp};if(margin>0&&(!win||item.margin>win.margin))win=item;if(margin<0&&(!loss||item.margin>loss.margin))loss=item}));return{win,loss}}
-function finalResult(bundle){const bracket=bundle.winnersBracket||[];if(!bracket.length)return null;const maxRound=Math.max(...bracket.map(x=>Number(x.r)||0)),finals=bracket.filter(x=>Number(x.r)===maxRound&&x.w!=null&&x.l!=null);const final=finals[0];if(!final)return null;return{winner:String(bundle.ownerByRoster?.[String(final.w)]||''),runnerUp:String(bundle.ownerByRoster?.[String(final.l)]||'')}}
+function finalResult(bundle){const bracket=bundle.winnersBracket||[];if(!bracket.length)return null;const maxRound=Math.max(...bracket.map(x=>Number(x.r)||0)),finals=bracket.filter(x=>Number(x.r)===maxRound&&x.w!=null&&x.l!=null);const final=finals[0];if(!final)return null;return{winner:historicalManagerIdForRoster(bundle,final.w),runnerUp:historicalManagerIdForRoster(bundle,final.l)}}
 function regularSeasonWinnerIds(bundle){const start=Number(bundle.league?.settings?.playoff_week_start)||Infinity,through=Number.isFinite(start)?start-1:Infinity,table=standingsTable(bundle,through);if(!table.length)return[];const best=table[0];return table.filter(x=>x.wins===best.wins&&x.pts===best.pts).map(x=>String(x.id))}
 // V3.4.4 — Manager Profile Trophy Cabinet
 // Award schema: {id,title,year,type,description}. One object represents one physical award.
