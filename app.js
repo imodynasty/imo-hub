@@ -2284,7 +2284,7 @@ function managerProfileHTML(managerId,sections=['overview']){
 }
 
 
-// V3.5.17 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// V3.5.20 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
 // starter and player-score data; no external scoring source is used.
 function rivalryManagerOptions(selected=''){
   return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
@@ -2343,16 +2343,73 @@ function rivalryScore(meetings){
 }
 function rivalryScoreLabel(score){if(score>=90)return'BLOOD FEUD';if(score>=75)return'HEATED';if(score>=55)return'RIVALRY';if(score>=30)return'HISTORY BUILDING';return'JUST GETTING STARTED'}
 function rivalryFacts(meetings,aName,bName){
-  if(!meetings.length)return[];const r=rivalryRecord(meetings),facts=[],close=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<10).length,both300=meetings.filter(m=>m.aPts>=300&&m.bPts>=300).length,playoffs=meetings.filter(m=>m.playoff),grandFinals=rivalryGrandFinalMeetings(meetings),last=meetings.at(-1);
-  let streak=1;for(let i=meetings.length-2;i>=0;i--){const winner=x=>x.aPts===x.bPts?'D':x.aPts>x.bPts?'A':'B';if(winner(meetings[i])===winner(last))streak++;else break}const lastWinner=last.aPts===last.bPts?'Neither':last.aPts>last.bPts?aName:bName;
-  if(streak>=2&&lastWinner!=='Neither')facts.push(`🔥 ${lastWinner} has won the last ${streak} meetings.`);
-  if(close)facts.push(`😬 ${close} of ${meetings.length} meetings ${close===1?'has':'have'} been decided by fewer than 10 FPTS.`);
-  if(both300)facts.push(`💯 Both teams topped 300 FPTS in the same matchup ${both300} ${both300===1?'time':'times'}.`);
-  if(grandFinals.length)facts.push(`🏆 These franchises have met in ${grandFinals.length===1?'an IMO Grand Final':`${grandFinals.length} IMO Grand Finals`}.`);
-  if(playoffs.length){let aw=0,bw=0;playoffs.forEach(m=>m.aPts>m.bPts?aw++:m.bPts>m.aPts?bw++:0);facts.push(`🏆 The playoff series stands ${aw}–${bw}${playoffs.some(m=>m.aPts===m.bPts)?' with a draw':''}.`)}
-  const high=[...meetings].sort((x,y)=>(y.aPts+y.bPts)-(x.aPts+x.bPts))[0];facts.push(`🚀 The highest-scoring meeting produced ${(high.aPts+high.bPts).toFixed(2)} combined FPTS in ${high.season}, Week ${high.week}.`);
-  if(r.aTotal<r.bTotal&&r.aWins>r.bWins)facts.push(`🌀 ${aName} leads the series despite ${bName} scoring more total H2H FPTS.`);else if(r.bTotal<r.aTotal&&r.bWins>r.aWins)facts.push(`🌀 ${bName} leads the series despite ${aName} scoring more total H2H FPTS.`);
-  return facts.slice(0,5)
+  if(!meetings.length)return[];
+  const r=rivalryRecord(meetings),candidates=[],games=meetings.length;
+  const add=(priority,text,key='')=>{if(text)candidates.push({priority,text,key:key||text})};
+  const winnerName=m=>m.aPts===m.bPts?'':m.aPts>m.bPts?aName:bName;
+
+  // Grand Finals are the strongest piece of rivalry history we can surface.
+  const grandFinals=rivalryGrandFinalMeetings(meetings);
+  if(grandFinals.length){
+    const gfWins={[aName]:0,[bName]:0};grandFinals.forEach(m=>{const w=winnerName(m);if(w)gfWins[w]=(gfWins[w]||0)+1});
+    if(grandFinals.length===1){const m=grandFinals[0],w=winnerName(m);add(100,`💍 ${aName} and ${bName} met in the ${m.season} IMO Grand Final${w?` — ${w} won the title.`:'.'}`,'grand-final')}
+    else{const leader=gfWins[aName]===gfWins[bName]?'':gfWins[aName]>gfWins[bName]?aName:bName;add(100,`💍 These franchises have met in ${grandFinals.length} IMO Grand Finals${leader?` — ${leader} has won ${Math.max(gfWins[aName],gfWins[bName])}.`:'.'}`,'grand-final')}
+  }
+
+  // Playoff history always names the side holding the edge.
+  const playoffs=meetings.filter(m=>m.playoff),playA=playoffs.filter(m=>m.aPts>m.bPts).length,playB=playoffs.filter(m=>m.bPts>m.aPts).length;
+  if(playoffs.length>=1){
+    if(playA===playB)add(playoffs.length>=2?88:68,`🏆 The playoff series is tied ${playA}–${playB}.`,'playoffs');
+    else{const leader=playA>playB?aName:bName,lead=Math.max(playA,playB),trail=Math.min(playA,playB);add(playoffs.length>=2?90:72,`🏆 ${leader} leads the playoff series ${lead}–${trail}.`,'playoffs')}
+  }
+
+  // Current/recent dominance.
+  const result=m=>m.aPts===m.bPts?'D':m.aPts>m.bPts?'A':'B';
+  const last=meetings.at(-1),lastResult=result(last);let streak=1;for(let i=meetings.length-2;i>=0;i--){if(result(meetings[i])===lastResult)streak++;else break}
+  if(lastResult!=='D'&&streak>=3)add(streak>=4?96:86,`🔥 ${lastResult==='A'?aName:bName} has won ${streak} straight meetings.`,'streak');
+  const lastFive=meetings.slice(-5),lastFiveA=lastFive.filter(m=>m.aPts>m.bPts).length,lastFiveB=lastFive.filter(m=>m.bPts>m.aPts).length;
+  if(lastFive.length>=4&&Math.max(lastFiveA,lastFiveB)>=4){const leader=lastFiveA>lastFiveB?aName:bName;add(91,`📈 ${leader} has won ${Math.max(lastFiveA,lastFiveB)} of the last ${lastFive.length} meetings.`,'recent-form')}
+
+  // Season sweeps: at least two meetings in the same season, all won by one side.
+  const bySeason=new Map();meetings.forEach(m=>{const arr=bySeason.get(m.season)||[];arr.push(m);bySeason.set(m.season,arr)});
+  [...bySeason.entries()].forEach(([season,ms])=>{if(ms.length<2)return;const aWins=ms.filter(m=>m.aPts>m.bPts).length,bWins=ms.filter(m=>m.bPts>m.aPts).length;if(aWins===ms.length)add(93,`🧹 ${aName} swept ${bName} ${ms.length}–0 in ${season}.`,`sweep-${season}`);else if(bWins===ms.length)add(93,`🧹 ${bName} swept ${aName} ${ms.length}–0 in ${season}.`,`sweep-${season}`)});
+
+  // Series position: only surface if tied, razor-close, or genuinely dominant.
+  const gap=Math.abs(r.aWins-r.bWins),decided=r.aWins+r.bWins;
+  if(r.aWins===r.bWins&&decided>=2)add(89,`⚖️ Nothing separates them — the all-time series is tied ${r.aWins}–${r.bWins}.`,'series');
+  else if(gap===1&&decided>=5){const leader=r.aWins>r.bWins?aName:bName;add(76,`⚔️ ${leader} holds a one-win edge in the all-time series, ${Math.max(r.aWins,r.bWins)}–${Math.min(r.aWins,r.bWins)}.`,'series')}
+  else if(decided>=5&&Math.max(r.aWins,r.bWins)/decided>=.75){const leader=r.aWins>r.bWins?aName:bName;add(87,`👑 ${leader} has controlled the series, winning ${Math.max(r.aWins,r.bWins)} of ${decided} decided meetings.`,'series')}
+
+  // Close-game threshold for facts is 20 FPTS. Use different language/emoji when closeness is rare.
+  const close20=meetings.filter(m=>Math.abs(m.aPts-m.bPts)<20).length,closePct=close20/games;
+  if(games>=3&&closePct>=.30){
+    if(closePct>=.5)add(84,`🤏 ${close20} of ${games} meetings have been decided by fewer than 20 FPTS.`,'close-games');
+    else add(70,`🤏 ${close20} of ${games} meetings have finished within 20 FPTS.`,'close-games');
+  }else if(games>=4&&(games-close20)/games>=.70){
+    add(78,`💥 ${games-close20} of ${games} meetings have been decided by 20+ FPTS.`,'wide-games');
+  }
+
+  // Exceptional single-game scoring records.
+  const closest=[...meetings].sort((x,y)=>Math.abs(x.aPts-x.bPts)-Math.abs(y.aPts-y.bPts))[0],closestMargin=Math.abs(closest.aPts-closest.bPts);
+  if(closestMargin<5)add(88,`😱 The closest meeting was decided by just ${closestMargin.toFixed(2)} FPTS — ${winnerName(closest)||'neither side'} ${winnerName(closest)?'escaped with the win':'finished level'}.`,'closest');
+  const high=[...meetings].sort((x,y)=>(y.aPts+y.bPts)-(x.aPts+x.bPts))[0],combined=high.aPts+high.bPts;
+  add(58,`🚀 The highest-scoring meeting produced ${combined.toFixed(2)} combined FPTS in ${high.season}, Week ${high.week}.`,'high-score');
+  const topTeam=[...meetings].flatMap(m=>[{name:aName,pts:m.aPts,season:m.season,week:m.week},{name:bName,pts:m.bPts,season:m.season,week:m.week}]).sort((x,y)=>y.pts-x.pts)[0];
+  if(topTeam)add(62,`💯 ${topTeam.name} owns the highest team score in rivalry history: ${topTeam.pts.toFixed(2)} FPTS.`,'team-high');
+
+  // Interesting total-points contradiction.
+  if(r.aTotal<r.bTotal&&r.aWins>r.bWins)add(92,`🌀 ${aName} leads the series despite ${bName} scoring more total H2H FPTS.`,'points-paradox');
+  else if(r.bTotal<r.aTotal&&r.bWins>r.aWins)add(92,`🌀 ${bName} leads the series despite ${aName} scoring more total H2H FPTS.`,'points-paradox');
+
+  // H2H lineup management edge, only when the difference is meaningful and both sides have data.
+  const chemA=rivalryChemistryForSide(meetings,'a'),chemB=rivalryChemistryForSide(meetings,'b');
+  if(chemA.pct!==null&&chemB.pct!==null&&chemA.starts>=3&&chemB.starts>=3&&Math.abs(chemA.pct-chemB.pct)>=5){const leader=chemA.pct>chemB.pct?aName:bName,pct=Math.max(chemA.pct,chemB.pct);add(73,`🧠 ${leader} has managed this matchup more efficiently, with ${pct.toFixed(1)}% H2H Chemistry.`,'chemistry')}
+
+  // Rivalry player note: same qualifying rule as Rivalry MVP (2+ started H2H matchups).
+  const mvp=rivalryMvp(meetings);if(mvp){const owner=mvp.side==='a'?aName:bName,opp=mvp.side==='a'?bName:aName,avg=mvp.total/mvp.matchups;if(avg>=30)add(80,`⭐ ${playerName(mvp.pid)} averages ${avg.toFixed(1)} FPTS against ${opp} for ${owner}, the best qualifying mark in the rivalry.`,'mvp')}
+
+  // De-duplicate concepts, rank by significance, and show no more than five genuinely useful notes.
+  const seen=new Set();return candidates.sort((a,b)=>b.priority-a.priority).filter(x=>{if(seen.has(x.key))return false;seen.add(x.key);return true}).slice(0,5).map(x=>x.text)
 }
 function rivalryRenderReport(aId,bId){
   const root=$('rivalriesReport');if(!root)return;const a=String(aId),b=String(bId),aName=managerName(a),bName=managerName(b),meetings=rivalryMeetings(a,b);
@@ -2363,10 +2420,10 @@ function rivalryRenderReport(aId,bId){
   const playoffs=meetings.filter(m=>m.playoff),playA=playoffs.filter(m=>m.aPts>m.bPts).length,playB=playoffs.filter(m=>m.bPts>m.aPts).length,mvp=rivalryMvp(meetings),chemA=rivalryChemistryForSide(meetings,'a'),chemB=rivalryChemistryForSide(meetings,'b'),score=rivalryScore(meetings),facts=rivalryFacts(meetings,aName,bName);
   const mvpOwner=mvp?(mvp.side==='a'?aName:bName):'',mvpImg=mvp?.pid?`https://sleepercdn.com/content/nba/players/${mvp.pid}.jpg`:'';
   const chem=(name,x)=>`<div class="rivalry-chem-team"><b>${esc(name)}</b><strong>${x.pct!==null?`${x.pct.toFixed(1)}%`:'—'}</strong><span>${x.pct!==null?`${chemistryStatus(x.pct,x.starts).icon} ${chemistryStatus(x.pct,x.starts).label}`:'NO DATA'}</span><small>${x.perfect} / ${x.starts} perfect picks</small></div>`;
-  root.innerHTML=`<div class="rivalry-report-tools"><button type="button" class="rivalry-download-btn" data-download-rivalry aria-label="Download rivalry as PNG" title="Download clean PNG">↓ <span>PNG</span></button></div><div class="rivalry-export-area">
+  root.innerHTML=`<div class="rivalry-report-tools"><button type="button" class="rivalry-download-btn" data-download-rivalry aria-label="Download rivalry" title="Download rivalry">↓</button></div><div class="rivalry-export-area">
   <section class="rivalry-hero"><span class="eyebrow">ALL-TIME SERIES · ${meetings.length} MEETINGS</span><div class="rivalry-versus"><div>${managerAvatarHTML(a,'rivalry-avatar')}<b>${esc(aName)}</b></div><strong>${r.aWins}<i>—</i>${r.bWins}</strong><div>${managerAvatarHTML(b,'rivalry-avatar')}<b>${esc(bName)}</b></div></div>${r.draws?`<small class="rivalry-draws">${r.draws} draw${r.draws===1?'':'s'}</small>`:''}<div class="rivalry-total"><span>TOTAL H2H FPTS</span><b>${r.aTotal.toFixed(2)} <i>—</i> ${r.bTotal.toFixed(2)}</b></div><div class="rivalry-last-five"><span>LAST 5 · ${esc(aName)}</span><div>${recent.map((m,i)=>{const x=last5[i];return `<button type="button" class="${x==='W'?'win':x==='L'?'loss':'draw'}" data-rivalry-result="${i}" aria-label="View ${x} result">${x}</button>`}).join('')}</div></div><div class="rivalry-result-peek" id="rivalryResultPeek" hidden></div></section>
   <div class="rivalry-stat-grid"><div><span>CLOSEST GAME</span><strong>${closest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(closestWinner)}</b> · ${esc(closest.season)} · W${closest.week}</small></div><div><span>BIGGEST WIN</span><strong>${biggest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(biggestWinner)}</b> · ${esc(biggest.season)} · W${biggest.week}</small></div><div><span>CURRENT STREAK</span><strong>${lastResult==='D'?'D':`W${streak}`}</strong><small><b class="rivalry-team-green">${esc(streakOwner)}</b></small></div><div><span>PLAYOFF H2H</span><strong>${playA}–${playB}</strong><small>${playoffs.length} meeting${playoffs.length===1?'':'s'}</small></div></div>
-  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo">${mvpImg?`<img src="${esc(mvpImg)}" alt="" loading="lazy" crossorigin="anonymous" onerror="this.style.display='none'">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
+  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo"><span class="rivalry-mvp-photo-fallback">${esc(playerName(mvp.pid).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase())}</span>${mvpImg?`<img src="${esc(mvpImg)}" alt="${esc(playerName(mvp.pid))}" loading="eager" decoding="async" crossorigin="anonymous" onload="this.classList.add('is-loaded')" onerror="this.remove()">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
   <section class="rivalry-card rivalry-chem-card"><div class="rivalry-card-heading"><span class="eyebrow">🧠 LINEUP DECISION-MAKING</span><h3>H2H Chemistry</h3><p>Only lineup starts made in meetings between these two franchises.</p></div><div class="rivalry-chemistry">${chem(aName,chemA)}<span class="rivalry-vs-mini">VS</span>${chem(bName,chemB)}</div></section>
   <section class="rivalry-split"><div class="rivalry-card rivalry-facts"><span class="eyebrow">📰 SERIES NOTES</span><h3>Rivalry Facts</h3>${facts.map(f=>`<p>${esc(f)}</p>`).join('')}</div><div class="rivalry-card rivalry-score"><span class="eyebrow">🔥 COMPETITIVE HISTORY</span><h3>Rivalry Score</h3><strong>${score}</strong><b>${rivalryScoreLabel(score)}</b><div><i style="width:${score}%"></i></div></div></section>
   <details class="rivalry-meetings"><summary>ALL ${meetings.length} MEETINGS <span>›</span></summary><div>${[...meetings].reverse().map(m=>`<div class="rivalry-meeting"><span>${esc(m.season)} · ${m.playoff?'PLAYOFFS · ':''}WEEK ${m.week}</span><p><b class="${m.aPts>m.bPts?'winner':''}">${esc(aName)} ${m.aPts.toFixed(2)}</b><i>—</i><b class="${m.bPts>m.aPts?'winner':''}">${m.bPts.toFixed(2)} ${esc(bName)}</b></p></div>`).join('')}</div></details></div>`;
