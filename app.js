@@ -2570,10 +2570,21 @@ function rivalryRenderReport(aId,bId){
 }
 function rivalryExportProxyUrl(src){
   const value=String(src||'').trim();if(!/^https?:\/\//i.test(value))return value;
-  // Rivalry pages use the exact same Sleeper images as the rest of the Hub. For
-  // export only, route those bytes through a CORS-safe image proxy so html2canvas
-  // can embed them rather than silently dropping the portraits from the PNG.
   return `https://images.weserv.nl/?url=${encodeURIComponent(value)}&output=png`;
+}
+async function rivalryImageDataUrl(src){
+  const value=String(src||'').trim();if(!value)return'';
+  if(/^data:/i.test(value))return value;
+  const candidates=[value,rivalryExportProxyUrl(value)];
+  for(const url of candidates){
+    try{
+      const res=await fetch(url,{mode:'cors',cache:'force-cache'});if(!res.ok)continue;
+      const blob=await res.blob();if(!/^image\//i.test(blob.type||''))continue;
+      const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result||''));fr.onerror=reject;fr.readAsDataURL(blob)});
+      if(data)return data;
+    }catch(_){ }
+  }
+  return'';
 }
 async function downloadRivalryPNG(button){
   const target=document.querySelector('#rivalriesReport .rivalry-export-area');if(!target||typeof html2canvas!=='function')return;
@@ -2582,26 +2593,31 @@ async function downloadRivalryPNG(button){
   try{
     document.body.classList.add('rivalry-exporting');
     const imgs=[...target.querySelectorAll('img')];
-    // Keep the exact same direct Sleeper image URLs used by manager/player profiles.
-    // html2canvas handles those URLs with useCORS; mutating the live image element can
-    // make Safari/mobile discard an otherwise valid Sleeper portrait.
-    imgs.forEach(img=>{imageState.push({img,src:img.getAttribute('src')||'',crossorigin:img.getAttribute('crossorigin')});img.loading='eager';img.decoding='async'});
+    // html2canvas is unreliable with remote Sleeper portraits (especially object-fit
+    // crops). Embed every rivalry portrait as a data URL before capture so the PNG
+    // contains the exact pixels instead of depending on CORS during rendering.
+    await Promise.all(imgs.map(async img=>{
+      const src=img.currentSrc||img.getAttribute('src')||'';
+      imageState.push({img,src:img.getAttribute('src')||'',style:img.getAttribute('style'),crossorigin:img.getAttribute('crossorigin')});
+      const data=await rivalryImageDataUrl(src);
+      if(data)img.src=data;
+      img.loading='eager';img.decoding='sync';
+      if(img.closest('.rivalry-mvp-photo'))img.style.cssText+=';position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center top!important;display:block!important;';
+      else if(img.closest('.rivalry-avatar'))img.style.cssText+=';width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;';
+    }));
     await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(resolve=>{const done=()=>resolve();img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,5000)})));
     await Promise.all(imgs.map(img=>typeof img.decode==='function'?img.decode().catch(()=>{}):Promise.resolve()));
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const canvas=await html2canvas(target,{backgroundColor:'#0b0f15',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1080,target.scrollWidth),imageTimeout:8000});
+    const canvas=await html2canvas(target,{backgroundColor:'#0b0f15',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1080,target.scrollWidth),imageTimeout:10000});
     const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(new Error('PNG export failed')),'image/png'));
     const filename=`imo-rivalry-${fileSafeName(managerName(a))}-vs-${fileSafeName(managerName(b))}.png`;
     const file=new File([blob],filename,{type:'image/png'});
     const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||window.matchMedia('(max-width: 700px)').matches;
-    if(mobile&&navigator.share&&navigator.canShare?.({files:[file]})){
-      await navigator.share({files:[file],title:`${managerName(a)} vs ${managerName(b)}`});
-    }else{
-      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
-    }
+    if(mobile&&navigator.share&&navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:`${managerName(a)} vs ${managerName(b)}`});
+    else{const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
     button.innerHTML='✓';setTimeout(()=>button.innerHTML=old,1400)
   }catch(err){if(err?.name!=='AbortError')console.error('Rivalry PNG export failed',err);button.innerHTML=err?.name==='AbortError'?old:'!';setTimeout(()=>button.innerHTML=old,1600)}finally{
-    imageState.forEach(({img,src,crossorigin})=>{if(!img?.isConnected)return;if(crossorigin===null)img.removeAttribute('crossorigin');else img.setAttribute('crossorigin',crossorigin);if(src)img.setAttribute('src',src)});
+    imageState.forEach(({img,src,style,crossorigin})=>{if(!img?.isConnected)return;if(crossorigin===null)img.removeAttribute('crossorigin');else img.setAttribute('crossorigin',crossorigin);if(style===null)img.removeAttribute('style');else img.setAttribute('style',style);if(src)img.setAttribute('src',src)});
     document.body.classList.remove('rivalry-exporting');button.disabled=false;button.classList.remove('is-loading')
   }
 }
