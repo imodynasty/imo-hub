@@ -1405,19 +1405,33 @@ async function downloadManagerShareCard(managerId,button){
   try{const canvas=await buildManagerShareCardCanvas(data);const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('PNG export failed')),'image/png'));const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`imo-dynasty-${fileSafeName(data.name)}-share-card.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);buttons.forEach(btn=>{btn.disabled=false;btn.classList.remove('is-loading','is-error');btn.classList.add('is-success');btn.textContent='✓'});setTimeout(()=>reset(),1600)}catch(error){console.error('Failed to download manager share card',error);buttons.forEach(btn=>{btn.disabled=false;btn.classList.remove('is-loading','is-success');btn.classList.add('is-error');btn.textContent='!'});setTimeout(()=>reset(),1800)}}
 function favouriteTradePartners(id){const all=managerTrades(id),counts={};all.forEach(t=>mids(t).filter(x=>x!==String(id)).forEach(x=>counts[x]=(counts[x]||0)+1));return Object.entries(counts).map(([partner,count])=>({partner,count,percent:all.length?count/all.length*100:0})).sort((a,b)=>b.count-a.count).slice(0,7)}
 function teamFormPlayers(id){const rosterIds=new Set((state.managers.get(String(id))?.roster?.players||[]).map(String)),rows=allGameLogFormRows().filter(x=>rosterIds.has(String(x.id)));return{poor:rows.filter(x=>x.change<0).sort((a,b)=>a.change-b.change).slice(0,3),good:rows.filter(x=>x.change>0).sort((a,b)=>b.change-a.change).slice(0,3)}}
-function teamHighestScore(id,bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>{if(String(b.ownerByRoster?.[String(m.roster_id)])!==String(id))return;const pts=Number(m.points);if(Number.isFinite(pts)&&(!best||pts>best.pts))best={pts,week:m.week,season:b.league.season}}));return best}
+function teamHighestScore(id,bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>{if(historicalManagerIdForRoster(b,m.roster_id)!==String(id))return;const pts=Number(m.points);if(Number.isFinite(pts)&&(!best||pts>best.pts))best={pts,week:m.week,season:b.league.season}}));return best}
 function managerRecentMatchups(id){const bundle=state.modelBundle,rows=matchupRows(bundle),byWeek={};rows.forEach(x=>(byWeek[x.week]??=[]).push(x));const results=[];Object.entries(byWeek).forEach(([week,weekRows])=>{const groups={};weekRows.forEach(x=>{if(x.matchup_id!=null)(groups[x.matchup_id]??=[]).push(x)});Object.values(groups).forEach(g=>{const mine=g.find(x=>String(bundle.ownerByRoster?.[String(x.roster_id)])===String(id)),opp=g.find(x=>x!==mine);if(!mine||!opp)return;const myPts=Number(mine.points),oppPts=Number(opp.points);if(!Number.isFinite(myPts)||!Number.isFinite(oppPts)||(myPts===0&&oppPts===0))return;const oppId=bundle.ownerByRoster?.[String(opp.roster_id)],result=myPts===oppPts?"D":myPts>oppPts?"W":"L";results.push({week:Number(week),result,myPts,oppPts,oppId})})});return results.sort((a,b)=>a.week-b.week).slice(-5)}
 function managerHeadToHead(id){
-  const records={};
-  state.bundles.forEach(bundle=>{const byWeek={};matchupRows(bundle).forEach(row=>(byWeek[row.week]??=[]).push(row));Object.values(byWeek).forEach(weekRows=>{const groups={};weekRows.forEach(row=>{if(row.matchup_id!=null)(groups[row.matchup_id]??=[]).push(row)});Object.values(groups).forEach(group=>{const mine=group.find(row=>String(bundle.ownerByRoster?.[String(row.roster_id)])===String(id)),opp=group.find(row=>row!==mine);if(!mine||!opp)return;const oppId=String(bundle.ownerByRoster?.[String(opp.roster_id)]||"");if(!oppId||oppId===String(id)||!state.managers.has(oppId))return;const minePts=Number(mine.points),oppPts=Number(opp.points);if(!Number.isFinite(minePts)||!Number.isFinite(oppPts)||(minePts===0&&oppPts===0))return;const rec=records[oppId]??={oppId,wins:0,losses:0,draws:0,games:0};rec.games++;if(minePts>oppPts)rec.wins++;else if(minePts<oppPts)rec.losses++;else rec.draws++})})});
+  const managerId=String(id),records={};
+  // Use the same franchise-lineage ledger as Rivalries so Manager Profile H2H
+  // can never disagree with the Rivalries page after an ownership change.
+  state.bundles.forEach(bundle=>completedMatchupsForBundle(bundle).forEach(game=>{
+    let oppId='',minePts=0,oppPts=0;
+    if(game.aId===managerId){oppId=game.bId;minePts=game.aPts;oppPts=game.bPts}
+    else if(game.bId===managerId){oppId=game.aId;minePts=game.bPts;oppPts=game.aPts}
+    else return;
+    if(!oppId||oppId===managerId||!state.managers.has(oppId))return;
+    const rec=records[oppId]??={oppId,wins:0,losses:0,draws:0,games:0};
+    rec.games++;if(minePts>oppPts)rec.wins++;else if(minePts<oppPts)rec.losses++;else rec.draws++
+  }));
   return Object.values(records).sort((a,b)=>b.games-a.games||managerName(a.oppId).localeCompare(managerName(b.oppId)))
 }
 function historicalManagerIdForRoster(bundle,rosterId){
   const rid=String(rosterId??'');if(!rid)return'';
-  // Primary identity is the Sleeper user who owned this roster in that exact
-  // historical league. This is the same identity shown in Sleeper Schedule.
-  const historical=String(bundle?.ownerByRoster?.[rid]||'');
-  if(historical)return historical;
+  // V3.5.27 — Rivalry history belongs to the FRANCHISE SLOT, not whichever
+  // Sleeper user happened to own that slot in a historical season. Sleeper
+  // renewals preserve roster_id as the franchise lineage, while owner_id can
+  // change after a manager replacement. Resolve the historical roster_id to
+  // the manager who owns that same franchise slot in the current league.
+  for(const manager of state.managers.values()){
+    if(String(manager?.roster?.roster_id??'')===rid)return String(manager.id)
+  }
   return''
 }
 function completedMatchupsForBundle(bundle){
