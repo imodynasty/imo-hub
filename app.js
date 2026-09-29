@@ -2284,7 +2284,7 @@ function managerProfileHTML(managerId,sections=['overview']){
 }
 
 
-// V3.5.22 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
+// V3.5.23 — IMO Rivalries. Every result is reconstructed from Sleeper matchup,
 // starter and player-score data; no external scoring source is used.
 function rivalryManagerOptions(selected=''){
   return [...state.managers.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${esc(m.id)}" ${String(m.id)===String(selected)?'selected':''}>${esc(m.name)}</option>`).join('')
@@ -2424,22 +2424,33 @@ function rivalryRenderReport(aId,bId){
   root.innerHTML=`<div class="rivalry-report-tools"><button type="button" class="rivalry-download-btn" data-download-rivalry aria-label="Download rivalry" title="Download rivalry">↓</button></div><div class="rivalry-export-area">
   <section class="rivalry-hero"><span class="eyebrow">ALL-TIME SERIES · ${meetings.length} MEETINGS</span><div class="rivalry-versus"><div>${rivalryManagerAvatar(a)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(a)}">${esc(aName)}</button></div><strong>${r.aWins}<i>—</i>${r.bWins}</strong><div>${rivalryManagerAvatar(b)}<button type="button" class="manager-profile-link rivalry-manager-link" data-manager-id="${esc(b)}">${esc(bName)}</button></div></div>${r.draws?`<small class="rivalry-draws">${r.draws} draw${r.draws===1?'':'s'}</small>`:''}<div class="rivalry-total"><span>TOTAL H2H FPTS</span><b>${r.aTotal.toFixed(2)} <i>—</i> ${r.bTotal.toFixed(2)}</b></div><div class="rivalry-last-five"><span>LAST 5 · ${esc(aName)}</span><div>${recent.map((m,i)=>{const x=last5[i];return `<button type="button" class="${x==='W'?'win':x==='L'?'loss':'draw'}" data-rivalry-result="${i}" aria-label="View ${x} result">${x}</button>`}).join('')}</div></div><div class="rivalry-result-peek" id="rivalryResultPeek" hidden></div></section>
   <div class="rivalry-stat-grid"><div><span>CLOSEST GAME</span><strong>${closest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(closestWinner)}</b> · ${esc(closest.season)} · W${closest.week}</small></div><div><span>BIGGEST WIN</span><strong>${biggest.margin.toFixed(2)}</strong><small><b class="rivalry-team-green">${esc(biggestWinner)}</b> · ${esc(biggest.season)} · W${biggest.week}</small></div><div><span>CURRENT STREAK</span><strong>${lastResult==='D'?'D':`W${streak}`}</strong><small><b class="rivalry-team-green">${esc(streakOwner)}</b></small></div><div><span>PLAYOFF H2H</span><strong>${playA}–${playB}</strong><small>${playoffs.length?`<b class="rivalry-team-green">${esc(playA===playB?'Tied':playA>playB?aName:bName)}</b> · ${playoffs.length} meeting${playoffs.length===1?'':'s'}`:`No playoff meetings`}</small></div></div>
-  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo"><span class="rivalry-mvp-photo-fallback">${esc(playerName(mvp.pid).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase())}</span>${mvpImg?`<img src="${esc(mvpImg)}" alt="${esc(playerName(mvp.pid))}" loading="eager" decoding="async" crossorigin="anonymous" onload="this.classList.add('is-loaded')" onerror="this.remove()">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
+  ${mvp?`<section class="rivalry-card rivalry-mvp"><div class="rivalry-mvp-photo"><span class="rivalry-mvp-photo-fallback">${esc(playerName(mvp.pid).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase())}</span>${mvpImg?`<img src="${esc(mvpImg)}" alt="${esc(playerName(mvp.pid))}" loading="eager" decoding="async" onload="this.classList.add('is-loaded')" onerror="this.remove()">`:''}</div><div><span class="eyebrow">🏆 RIVALRY MVP</span><h3>${playerLink(mvp.pid,playerName(mvp.pid))}</h3><p>${esc(mvpOwner)} · vs ${esc(mvp.side==='a'?bName:aName)}</p></div><div class="rivalry-mvp-stats"><div class="featured"><strong>${(mvp.total/mvp.matchups).toFixed(2)}</strong><span>AVG / MATCHUP</span></div><div><strong>${mvp.total.toFixed(2)}</strong><span>TOTAL FPTS</span></div><div><strong>${mvp.best.toFixed(2)}</strong><span>BEST WEEK</span></div></div></section>`:''}
   <section class="rivalry-card rivalry-chem-card"><div class="rivalry-card-heading"><span class="eyebrow">🧠 LINEUP DECISION-MAKING</span><h3>H2H Chemistry</h3><p>Only lineup starts made in meetings between these two franchises.</p></div><div class="rivalry-chemistry">${chem(aName,chemA)}<span class="rivalry-vs-mini">VS</span>${chem(bName,chemB)}</div></section>
   <section class="rivalry-split"><div class="rivalry-card rivalry-facts"><span class="eyebrow">📰 SERIES NOTES</span><h3>Rivalry Facts</h3>${facts.map(f=>`<p>${esc(f)}</p>`).join('')}</div><div class="rivalry-card rivalry-score"><span class="eyebrow">🔥 COMPETITIVE HISTORY</span><h3>Rivalry Score</h3><strong>${score}</strong><b>${rivalryScoreLabel(score)}</b><div><i style="width:${score}%"></i></div></div></section>
   <details class="rivalry-meetings"><summary>ALL ${meetings.length} MEETINGS <span>›</span></summary><div>${[...meetings].reverse().map(m=>`<div class="rivalry-meeting"><span>${esc(m.season)} · ${m.playoff?'PLAYOFFS · ':''}WEEK ${m.week}</span><p><b class="${m.aPts>m.bPts?'winner':''}">${esc(aName)} ${m.aPts.toFixed(2)}</b><i>—</i><b class="${m.bPts>m.aPts?'winner':''}">${m.bPts.toFixed(2)} ${esc(bName)}</b></p></div>`).join('')}</div></details></div>`;
   root._rivalryRecent=recent;root._rivalryNames={aName,bName};
 }
+function rivalryExportProxyUrl(src){
+  const value=String(src||'').trim();if(!/^https?:\/\//i.test(value))return value;
+  // Rivalry pages use the exact same Sleeper images as the rest of the Hub. For
+  // export only, route those bytes through a CORS-safe image proxy so html2canvas
+  // can embed them rather than silently dropping the portraits from the PNG.
+  return `https://images.weserv.nl/?url=${encodeURIComponent(value)}&output=png`;
+}
 async function downloadRivalryPNG(button){
   const target=document.querySelector('#rivalriesReport .rivalry-export-area');if(!target||typeof html2canvas!=='function')return;
   const a=$('rivalryManagerA')?.value,b=$('rivalryManagerB')?.value;if(!a||!b)return;button.disabled=true;button.classList.add('is-loading');const old=button.innerHTML;button.textContent='…';
+  const imageState=[];
   try{
     document.body.classList.add('rivalry-exporting');
-    const imgs=[...target.querySelectorAll('img')];imgs.forEach(img=>{img.loading='eager'});
-    await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{const done=()=>resolve();img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,2500)})));
+    const imgs=[...target.querySelectorAll('img')];
+    // Keep the live Rivalries UI on the same direct Sleeper image URLs used by
+    // manager/player profiles. Swap to a CORS-safe copy only for the PNG capture.
+    imgs.forEach(img=>{imageState.push({img,src:img.getAttribute('src')||'',crossorigin:img.getAttribute('crossorigin')});img.loading='eager';const proxied=rivalryExportProxyUrl(img.currentSrc||img.src||img.getAttribute('src'));if(proxied&&proxied!==(img.currentSrc||img.src)){img.setAttribute('crossorigin','anonymous');img.src=proxied}});
+    await Promise.all(imgs.map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(resolve=>{const done=()=>resolve();img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,5000)})));
     await Promise.all(imgs.map(img=>typeof img.decode==='function'?img.decode().catch(()=>{}):Promise.resolve()));
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const canvas=await html2canvas(target,{backgroundColor:'#0b0f15',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1080,target.scrollWidth)});
+    const canvas=await html2canvas(target,{backgroundColor:'#0b0f15',scale:2,useCORS:true,allowTaint:false,logging:false,windowWidth:Math.max(1080,target.scrollWidth),imageTimeout:8000});
     const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(new Error('PNG export failed')),'image/png'));
     const filename=`imo-rivalry-${fileSafeName(managerName(a))}-vs-${fileSafeName(managerName(b))}.png`;
     const file=new File([blob],filename,{type:'image/png'});
@@ -2450,7 +2461,10 @@ async function downloadRivalryPNG(button){
       const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
     }
     button.innerHTML='✓';setTimeout(()=>button.innerHTML=old,1400)
-  }catch(err){if(err?.name!=='AbortError')console.error('Rivalry PNG export failed',err);button.innerHTML=err?.name==='AbortError'?old:'!';setTimeout(()=>button.innerHTML=old,1600)}finally{document.body.classList.remove('rivalry-exporting');button.disabled=false;button.classList.remove('is-loading')}
+  }catch(err){if(err?.name!=='AbortError')console.error('Rivalry PNG export failed',err);button.innerHTML=err?.name==='AbortError'?old:'!';setTimeout(()=>button.innerHTML=old,1600)}finally{
+    imageState.forEach(({img,src,crossorigin})=>{if(!img?.isConnected)return;if(crossorigin===null)img.removeAttribute('crossorigin');else img.setAttribute('crossorigin',crossorigin);if(src)img.setAttribute('src',src)});
+    document.body.classList.remove('rivalry-exporting');button.disabled=false;button.classList.remove('is-loading')
+  }
 }
 function showRivalryRecentResult(index,button){const root=$('rivalriesReport'),m=root?._rivalryRecent?.[Number(index)],names=root?._rivalryNames,peek=$('rivalryResultPeek');if(!m||!names||!peek)return;root.querySelectorAll('[data-rivalry-result]').forEach(x=>x.classList.toggle('active',x===button));peek.hidden=false;peek.innerHTML=`<span>${esc(m.season)} · ${m.playoff?'PLAYOFFS · ':''}WEEK ${m.week}</span><strong><b class="${m.aPts>m.bPts?'winner':''}">${esc(names.aName)} ${m.aPts.toFixed(2)}</b><i>—</i><b class="${m.bPts>m.aPts?'winner':''}">${m.bPts.toFixed(2)} ${esc(names.bName)}</b></strong>`}
 

@@ -2655,11 +2655,11 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 }
 
 
-/* V3.5.22 — Rivalries export + alignment polish */
+/* V3.5.23 — Rivalries export + portrait polish */
 .rivalry-last-five button{padding:0!important;box-sizing:border-box;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1!important}
 .rivalries-close{padding:0!important;box-sizing:border-box;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1!important;font-family:Arial,sans-serif!important}
 .rivalry-manager-link{appearance:none;border:0;background:transparent;color:inherit;padding:0;margin:0;font:inherit;font-weight:900;cursor:pointer;text-align:inherit;line-height:1.12}
 .rivalry-manager-link:hover,.rivalry-manager-link:focus-visible{color:#86efac;text-decoration:underline;text-underline-offset:3px}
 
-/* V3.5.22 Rivalries avatar + playoff polish */
+/* V3.5.23 Rivalries avatar + playoff polish */
 .rivalry-avatar{position:relative}.rivalry-avatar img{display:block;position:relative;z-index:2}.rivalry-mvp-photo{position:relative;display:grid;place-items:center}.rivalry-mvp-photo-fallback{position:absolute;inset:0;display:grid;place-items:center;font-weight:900;color:#94a3b8}.rivalry-mvp-photo img{position:relative;z-index:2;display:block}.rivalry-stat-grid small .rivalry-team-green{font-weight:900}
