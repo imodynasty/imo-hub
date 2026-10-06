@@ -3029,3 +3029,162 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
   .player-history-index{left:-32px!important;width:25px!important;height:25px!important;font-size:11px;top:13px}
   .player-history-trade>summary{grid-template-columns:minmax(0,1fr)!important}
 }
+
+/* =========================================================
+   IMO DYNASTY 4.0 — Editorial sports intelligence reskin
+   Presentation-only overhaul: existing data + feature logic retained.
+   ========================================================= */
+:root{
+  --bg:#0d0f12;--panel:#171a1f;--panel2:#1d2026;--line:#2a2e35;
+  --text:#f7f8fa;--muted:#8f949d;--green:#38e07e;--red:#ef3038;
+  --purple:#ef3038;--pink:#ff6268;--blue:#38d7ee;--yellow:#f6c94c;
+  --shadow:none;--imo-surface:#181b20;--imo-surface-soft:#202329;
+}
+html{background:var(--bg)}
+body{background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.012em}
+.noise{display:none}
+
+/* Desktop app shell */
+@media(min-width:1001px){
+  body{padding-left:248px}
+  .site-header.v26-header{position:fixed!important;left:0;top:0;bottom:0;width:248px;height:100vh!important;min-height:0!important;padding:24px 18px!important;display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;background:#111316!important;border:0!important;border-right:1px solid #24272d!important;box-shadow:none!important;z-index:100}
+  .v26-brand{display:flex!important;align-items:center!important;gap:12px!important;padding:0 8px 22px!important;border-bottom:1px solid #25282e}
+  .brand-mark{width:58px!important;height:42px!important;flex:0 0 58px!important;border:0!important;background:transparent!important;border-radius:10px!important;overflow:hidden}
+  .brand-mark img{width:100%!important;height:100%!important;object-fit:contain!important}
+  .v26-brand-copy .eyebrow,.v26-brand-copy p{display:none!important}
+  .v26-brand-copy h1{font-size:16px!important;line-height:1.05!important;margin:0!important;letter-spacing:-.02em!important}
+  .v26-header-actions{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:8px!important;margin-top:18px!important}
+  #statusText{order:5;margin-top:auto;padding:14px 10px 0;color:#656b74!important;font-size:9px!important}
+  .global-search-launch{order:0;width:100%!important;height:46px!important;justify-content:flex-start!important;gap:12px!important;padding:0 14px!important;border:1px solid #292d33!important;border-radius:14px!important;background:#1b1e23!important;color:#dfe2e7!important}
+  .global-search-launch span{font-size:21px!important}.global-search-launch small{display:block!important;font-size:12px!important;font-weight:800!important}
+  .hub-nav-menu{order:1;display:block!important;width:100%!important}
+  .hub-nav-trigger{display:none!important}
+  .hub-nav-popover{position:static!important;display:flex!important;flex-direction:column!important;gap:5px!important;width:100%!important;padding:8px 0 0!important;background:transparent!important;border:0!important;box-shadow:none!important;transform:none!important;opacity:1!important;visibility:visible!important}
+  .hub-nav-item{min-height:48px!important;width:100%!important;display:grid!important;grid-template-columns:30px minmax(0,1fr)!important;align-items:center!important;gap:10px!important;padding:9px 12px!important;border:0!important;border-radius:12px!important;background:transparent!important;color:#e9ebee!important;text-decoration:none!important;text-align:left!important}
+  .hub-nav-item:hover,.hub-nav-item:focus-visible{background:#202329!important;outline:none!important}
+  .hub-nav-item img,.hub-nav-glyph{width:25px!important;height:25px!important;display:grid!important;place-items:center!important;object-fit:contain!important;font-size:16px!important;color:#f4f5f7!important}
+  .hub-nav-item strong{font-size:13px!important}.hub-nav-item small{display:none!important}
+  .league-ticker{margin-left:0!important}
+  main{width:min(1380px,calc(100% - 48px))!important;margin:30px auto 72px!important}
+  footer{width:min(1380px,calc(100% - 48px))!important}
+}
+
+/* Global hierarchy */
+main{max-width:1380px}
+.panel{background:var(--imo-surface)!important;border:0!important;border-radius:22px!important;box-shadow:none!important;padding:24px!important;margin-bottom:18px!important}
+.panel-heading{margin-bottom:20px!important;align-items:center!important}
+.panel-heading h3{font-size:clamp(22px,2vw,30px)!important;line-height:1!important;letter-spacing:-.045em!important;margin:6px 0 0!important}
+.panel-heading p{font-size:12px!important;line-height:1.5!important;max-width:680px!important}
+.eyebrow{color:#40dced!important;font-size:9px!important;font-weight:950!important;letter-spacing:.2em!important}
+.period-pill{border:0!important;background:#24272d!important;color:#aeb3bc!important;padding:7px 10px!important;border-radius:10px!important;font-weight:800!important}
+.section-brand{gap:9px!important}.section-brand img{width:28px!important;height:28px!important}.section-brand b{font-size:10px!important;letter-spacing:.14em!important}.section-brand small{font-size:8px!important;color:#7f858e!important}
+
+/* Home: broad, editorial modules rather than boxes inside boxes */
+.power-rankings-hero{background:linear-gradient(135deg,#5b0e13 0%,#261316 32%,#181b20 68%)!important;padding:30px!important}
+.power-rankings-hero .panel-heading h3{font-size:clamp(34px,4vw,58px)!important;color:#fff!important}
+.power-rankings-intro{font-size:13px!important;color:#c4c7cd!important}
+.power-rankings-grid{gap:2px!important;background:rgba(255,255,255,.08)!important;border-radius:16px!important;overflow:hidden!important}
+.power-profile-card{border:0!important;border-radius:0!important;background:#15181c!important;padding:14px 16px!important;min-height:72px!important}
+.power-profile-card:hover{background:#20242a!important;transform:none!important;box-shadow:none!important}
+.power-avatar{width:48px!important;height:48px!important;border-radius:50%!important}
+.power-copy strong{font-size:15px!important}.power-copy small{color:#9aa0a9!important}
+.power-score{font-size:20px!important;color:#fff!important}
+
+.trade-week{background:var(--imo-surface)!important}
+.trade-side,.trade-card,.rank-item,.odds-row,.record,.profile-trade-card{background:transparent!important;border:0!important;border-radius:0!important}
+.trade-side{padding:16px 0!important}.trade-player{border-color:#2b2e34!important}
+.trade-score{background:#202329!important;border:0!important;border-radius:12px!important}.trade-score strong{color:#fff!important}
+.trade-centre-recent{border-top:1px solid #2b2e34!important;padding-top:22px!important;margin-top:22px!important}
+.recent-trades{gap:0!important}.trade-card{border-top:1px solid #292d33!important}
+
+.dashboard-grid{gap:18px!important}
+.form-panel .rank-list,.leaderboard{gap:0!important}
+.rank-item{padding:13px 4px!important;border-bottom:1px solid #292d33!important}
+.rank-item:last-child{border-bottom:0!important}
+.leader-row{min-height:48px;border-bottom:1px solid #292d33;padding:8px 4px}
+.bar-track{background:#282c32!important;height:7px!important}.bar-fill{background:linear-gradient(90deg,#ef3038,#ff767b)!important}
+
+/* League history reads like an editorial chapter */
+.league-history-group{margin-top:46px!important;padding-top:0!important;border-top:0!important}
+.league-history-heading{padding:0 4px 18px!important;border-bottom:1px solid #292d33!important;margin-bottom:18px!important}
+.league-history-heading h2{font-size:clamp(34px,4vw,56px)!important;letter-spacing:-.055em!important;margin:10px 0 6px!important}
+.league-history-heading p{font-size:13px!important;color:#8f949d!important}
+.history-dropdown{border-top:1px solid #292d33!important;border-radius:0!important;background:transparent!important}
+.history-dropdown summary{padding:16px 4px!important}
+.records-grid{gap:1px!important;background:#292d33!important;border-radius:16px!important;overflow:hidden!important}
+.record{background:#171a1f!important;padding:18px!important}
+.record strong{font-size:20px!important;color:#fff!important}
+
+/* Tables */
+table{border-collapse:collapse!important}th{color:#777d86!important;font-size:9px!important}th,td{border-color:#2a2e34!important}td{font-size:13px!important}
+
+/* Modals become clean full product pages */
+.manager-profile-backdrop,.player-history-backdrop,.rivalries-backdrop,.headlines-backdrop,.global-search-backdrop,.manager-directory-backdrop{background:rgba(0,0,0,.78)!important;backdrop-filter:blur(5px)!important}
+.manager-profile-sheet,.player-history-sheet,.rivalries-sheet,.headlines-sheet,.global-search-sheet,.manager-directory-sheet{background:#111316!important;border:1px solid #292d33!important;border-radius:26px!important;box-shadow:0 28px 90px rgba(0,0,0,.55)!important}
+.manager-profile-content{padding:38px!important}
+.manager-profile-hero{background:linear-gradient(120deg,#8f1118,#3b1115 48%,#191b20)!important;border-radius:22px!important;padding:28px 72px 28px 28px!important;margin-bottom:20px!important;min-height:170px!important}
+.manager-profile-hero h2{font-size:clamp(42px,5vw,72px)!important;color:#fff!important}
+.manager-profile-avatar{width:110px!important;height:110px!important;flex-basis:110px!important;border-radius:20px!important;background:#111316!important}
+.manager-profile-stat-grid{gap:1px!important;background:#2a2d33!important;border-radius:16px!important;overflow:hidden!important;margin-bottom:20px!important}
+.manager-profile-stat-grid>div{border:0!important;border-radius:0!important;background:#191c21!important;padding:18px!important}
+.manager-profile-stat-grid strong{font-size:26px!important;color:#fff!important}
+.manager-profile-card{background:#191c21!important;border:0!important;border-radius:20px!important;padding:22px!important}
+.profile-roster-row{border-color:#2b2e34!important;padding:11px 4px!important}
+.player-avatar-wrap{border-radius:50%!important;background:#22262c!important}
+
+/* Player profile: large sports profile, IMO-specific data first */
+.player-history-sheet{background:#111316!important}
+.player-history-header,.player-history-hero{background:transparent!important}
+.player-owner-label{color:#43dcec!important;font-size:10px!important;letter-spacing:.2em!important}
+.player-history-main h2,.player-title-row h2{font-size:clamp(52px,7vw,88px)!important;line-height:.88!important;letter-spacing:-.065em!important;color:#fff!important}
+.player-career-summary{border-bottom:0!important;margin-top:26px!important;padding-bottom:0!important}
+.player-career-heading .eyebrow{color:#ef555b!important}
+.player-career-grid{gap:1px!important;background:#2b2e34!important;border:0!important;border-radius:18px!important}
+.player-career-grid>div{background:#191c21!important;padding:20px!important}
+.player-career-grid>div+div:before{display:none!important}
+.player-career-grid span{color:#858b94!important}.player-career-grid strong{font-size:22px!important}.player-career-grid small{font-size:10px!important}
+.player-history-timeline:before{background:linear-gradient(#ef3038,rgba(239,48,56,.18))!important}
+.player-history-index{border-color:#ef555b!important;background:#191316!important;color:#ff656b!important;box-shadow:0 0 0 5px #111316!important}
+.player-history-trade{background:transparent!important;border:0!important;border-bottom:1px solid #292d33!important;border-radius:0!important}
+.player-history-trade[open] .player-history-index{background:#ef3038!important;border-color:#ef3038!important;color:#fff!important}
+
+/* Rivalries: preserve drama, reduce nested-card feeling */
+.rivalries-sheet{background:#101216!important}
+.rivalry-card{background:#181b20!important;border:0!important;box-shadow:none!important}
+.rivalry-hero{background:linear-gradient(120deg,#341014,#17191e 42%,#17191e 58%,#102831)!important;border:0!important}
+.rivalry-stat-grid{gap:1px!important;background:#2a2d33!important;border-radius:16px!important;overflow:hidden!important}
+.rivalry-stat-grid>div{border:0!important;border-radius:0!important;background:#181b20!important}
+.rivalry-versus>strong,.rivalry-score>strong{color:#fff!important;-webkit-text-fill-color:#fff!important}
+
+/* Search resembles a modern command palette */
+.global-search-sheet{max-width:820px!important;padding:28px!important}
+.global-search-heading h2{font-size:36px!important;letter-spacing:-.04em!important}
+.global-search-field{height:58px!important;border:0!important;border-radius:16px!important;background:#22252a!important}
+.global-search-field input{font-size:17px!important}
+
+/* Controls */
+button,.small-button,.active-window-btn,.roster-season-toggle button{font-family:inherit}
+.small-button,.active-window-btn,.roster-season-toggle button{border:0!important;background:#24272d!important;color:#c5c9cf!important;border-radius:10px!important}
+.active-window-btn.active,.roster-season-toggle button.active{background:#ef3038!important;color:#fff!important}
+.manager-profile-close,.player-history-close,.rivalries-close,.headlines-close,.global-search-close,.manager-directory-close{background:#202329!important;border:0!important;color:#fff!important}
+
+/* Mobile remains native and spacious */
+@media(max-width:1000px){
+  body{padding-left:0!important}
+  .site-header.v26-header{background:#111316!important;border-top:2px solid #ef3038!important;border-bottom:1px solid #292d33!important;box-shadow:none!important}
+  .hub-nav-menu:not([open]) .hub-nav-popover{display:none!important}
+  .hub-nav-menu[open] .hub-nav-popover{position:absolute!important}
+  main{margin-top:18px!important}
+  .panel{border-radius:18px!important;padding:18px!important}
+  .power-rankings-hero{padding:22px!important}
+  .manager-profile-content{padding:22px 14px 36px!important}
+  .manager-profile-hero{min-height:0!important;padding:22px 54px 22px 18px!important;border-radius:18px!important}
+  .manager-profile-avatar{width:68px!important;height:68px!important;flex-basis:68px!important}
+}
+@media(max-width:700px){
+  .dashboard-grid{gap:12px!important}
+  .panel-heading h3{font-size:23px!important}
+  .power-rankings-hero .panel-heading h3{font-size:36px!important}
+  .player-career-grid{background:#292d33!important}
+  .player-career-grid>div{background:#191c21!important}
+}
