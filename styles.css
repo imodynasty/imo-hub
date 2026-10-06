@@ -2988,3 +2988,44 @@ input,select,textarea{background:#0b1016!important;border:1px solid #2b3440!impo
 .rivalry-export-mode .rivalry-score>strong{display:block!important;font-size:5.7rem!important;line-height:.86!important;margin:12px 0 8px!important;background:none!important;-webkit-background-clip:border-box!important;background-clip:border-box!important;color:#f4f7fb!important;-webkit-text-fill-color:#f4f7fb!important;text-shadow:0 4px 16px rgba(0,0,0,.28)!important}
 .rivalry-export-mode .rivalry-score>b{font-size:11px!important;letter-spacing:.18em!important}
 .rivalry-export-mode .rivalry-score>div{width:100%!important;height:8px!important;margin:14px 0 0!important}
+
+/* V3.5.39 — Player IMO Career summary + connected trade timeline */
+.player-owner-label{color:#35e6ff!important;letter-spacing:.18em}
+.player-history-main .player-title-row{display:block}
+.player-history-main .player-title-row h2{margin-top:7px}
+.player-career-summary{margin:18px 0 0;padding:0 0 18px;border-bottom:1px solid var(--line)}
+.player-career-heading{margin-bottom:9px}
+.player-career-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(8,13,20,.64);overflow:hidden}
+.player-career-grid>div{min-width:0;padding:15px 17px;position:relative}
+.player-career-grid>div+div:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:rgba(255,255,255,.09)}
+.player-career-grid span,.player-career-grid strong,.player-career-grid small{display:block}
+.player-career-grid span{font-size:8px;line-height:1.2;font-weight:900;letter-spacing:.16em;color:var(--muted)}
+.player-career-grid strong{margin-top:7px;font-size:20px;line-height:1.05;color:#f6f8fb;overflow-wrap:anywhere}
+.player-career-grid small{margin-top:5px;font-size:9px;line-height:1.35;color:#8f9aa8}
+.player-career-grid>div:nth-child(3) strong{font-size:24px;color:#fff}
+.player-career-grid>div:nth-child(4) strong{font-size:27px}
+.player-journey{margin-top:20px}
+.player-journey-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:8px;padding-left:2px}
+.player-journey-heading span,.player-journey-heading strong{display:block}
+.player-journey-heading strong{font-size:15px;color:#f6f8fb}
+.player-history-timeline{position:relative;display:grid;gap:10px;padding:6px 0 2px 36px}
+.player-history-timeline:before{content:"";position:absolute;left:13px;top:19px;bottom:20px;width:2px;background:linear-gradient(180deg,rgba(56,224,126,.85),rgba(56,224,126,.18));border-radius:99px}
+.player-history-trade{position:relative;overflow:visible!important;border-radius:12px;background:rgba(5,9,14,.45)}
+.player-history-trade>summary{grid-template-columns:minmax(0,1fr) auto!important;padding:13px 14px!important}
+.player-history-index{position:absolute!important;left:-36px;top:14px;z-index:2;width:28px!important;height:28px!important;border-radius:50%!important;border:2px solid rgba(56,224,126,.58);background:#0b1514!important;box-shadow:0 0 0 5px #090e16;color:var(--green)!important}
+.player-history-trade[open] .player-history-index{background:var(--green)!important;color:#04110a!important;border-color:var(--green)}
+.player-history-trade>summary>span:nth-child(2){min-width:0}
+.player-history-trade>summary>span:nth-child(2) strong{font-size:14px;line-height:1.2}
+.player-history-trade>summary>span:nth-child(2) small{margin-top:4px}
+.player-history-view{align-self:center}
+@media(max-width:780px){
+  .player-career-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .player-career-grid>div+div:before{display:none}
+  .player-career-grid>div:nth-child(odd){border-right:1px solid rgba(255,255,255,.08)}
+  .player-career-grid>div:nth-child(n+3){border-top:1px solid rgba(255,255,255,.08)}
+  .player-career-grid strong{font-size:17px}.player-career-grid>div:nth-child(3) strong{font-size:21px}.player-career-grid>div:nth-child(4) strong{font-size:23px}
+  .player-history-timeline{padding-left:31px}
+  .player-history-timeline:before{left:11px}
+  .player-history-index{left:-32px!important;width:25px!important;height:25px!important;font-size:11px;top:13px}
+  .player-history-trade>summary{grid-template-columns:minmax(0,1fr)!important}
+}

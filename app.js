@@ -2880,13 +2880,79 @@ function followTradeReturnChainAsset(index){
 }
 function goToReturnChainStep(index){if(!returnChainSession)return;const n=Math.max(0,Math.min(Number(index)||0,returnChainSession.steps.length-1));returnChainSession.steps=returnChainSession.steps.slice(0,n+1);renderTradeReturnChain();$("tradeReturnTreeModal")?.querySelector?.(".trade-return-tree-sheet")?.scrollTo?.({top:0,behavior:'smooth'})}
 function closeTradeReturnTree(){const modal=$("tradeReturnTreeModal");if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.body.classList.remove('trade-return-tree-open');returnChainSession=null}
-function playerHistoryHTML(playerId){const id=String(playerId),name=playerName(id),trades=playerTrades(id),avatar=`https://sleepercdn.com/content/nba/players/${id}.jpg`,seasonAvg=playerCurrentAverage(id),efficiency=playerFptsPer36(id,seasonAvg.season,seasonAvg.avg),profileTags=playerProfileTagsHTML(id,seasonAvg,efficiency),starred=isPlayerStarred(id),treeManagers=returnTreeManagers(id),treeControl=treeManagers.length?`<div class="return-tree-launch"><div><span class="eyebrow">TRADE RETURN CHAIN</span><strong>Follow a former owner's return one asset at a time</strong></div>${treeManagers.length>1?`<select data-return-tree-manager aria-label="Choose manager return chain">${treeManagers.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · traded ${fmt(x.trade.created,true)}</option>`).join('')}</select>`:`<input type="hidden" data-return-tree-manager value="${esc(treeManagers[0].id)}">`}<button type="button" data-open-return-tree="${esc(id)}">View Trade Return Chain</button></div>`:'';return `<div class="player-history-hero"><span class="player-history-avatar"><img src="${esc(avatar)}" alt="" onerror="this.style.display='none'"></span><div class="player-history-main"><span class="eyebrow">PLAYER TRANSACTION FILE</span><div class="player-title-row"><h2 id="playerHistoryTitle">${esc(name)}</h2><div class="player-interest-control"><button type="button" class="player-star-btn ${starred?'active':''}" data-star-player="${esc(id)}" aria-pressed="${starred}" title="${starred?'Remove trade interest':'Signal trade interest'}">${starred?'★':'☆'}</button><small>Think this player is getting traded? Tap the star</small></div></div><p>${trades.length} all-time trade${trades.length===1?'':'s'} recorded across loaded IMO Dynasty seasons.</p></div><div class="player-current-average player-efficiency-stats"><div><span>FPTS/G</span><strong>${seasonAvg.avg>0?seasonAvg.avg.toFixed(2):'—'}</strong></div><div class="player-efficiency-secondary"><span>MPG</span><strong>${efficiency.mpg>0?efficiency.mpg.toFixed(1):'—'}</strong></div><div class="player-efficiency-secondary"><span>FPTS/36</span><strong>${fpts36Display(efficiency)}</strong></div><small>${seasonAvg.games?`${seasonAvg.games} games · ${esc(seasonAvg.season)}`:'Season not started'}</small>${profileTags}</div></div>${treeControl}<div class="player-history-timeline">${trades.length?trades.map((t,i)=>`<details class="player-history-trade" ${i===0?'open':''}><summary><span class="player-history-index">${trades.length-i}</span><span><strong>${mids(t).map(mid=>esc(managerName(mid,t))).join(' ↔ ')}</strong><small>${fmt(t.created)} · ${esc(t.season_label||'')}</small></span><span class="player-history-view">View trade</span></summary><div class="trade-detail-body">${tradeDetailsHTML(t)}</div></details>`).join(''):'<div class="profile-empty">No trades involving this player were found in the loaded league history.</div>'}</div>`}
+function playerCurrentOwner(playerId){
+  const id=String(playerId),bundle=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.bundles[0];
+  const roster=safeArray(bundle?.rosters).find(r=>safeArray([...(r?.players||[]),...(r?.reserve||[]),...(r?.taxi||[])]).map(String).includes(id));
+  const managerId=roster?String(bundle?.ownerByRoster?.[String(roster.roster_id)]||''):'';
+  return managerId?{id:managerId,name:bundle?.managerNameMap?.[managerId]||managerName(managerId)}:{id:'',name:'Not currently rostered'};
+}
+function playerManagerNameForSeason(managerId,season){
+  const id=String(managerId||''),bundle=bundleForSeason(String(season||''));
+  return bundle?.managerNameMap?.[id]||safeArray(state.bundles).map(b=>b?.managerNameMap?.[id]).find(Boolean)||managerName(id);
+}
+function playerManagerNameAny(managerId){const id=String(managerId||'');return safeArray(state.bundles).map(b=>b?.managerNameMap?.[id]).find(Boolean)||managerName(id)}
+
+function playerOwnershipDurations(playerId){
+  const id=String(playerId),origin=playerDraftOrigin(id),events=[],seen=new Set();
+  if(origin?.pickedBy&&Number(origin.created)>0)events.push({time:Number(origin.created),type:'acquire',managerId:String(origin.pickedBy),season:String(origin.season||'')});
+  safeArray(state.bundles).forEach(bundle=>safeArray(bundle?.transactions).forEach(t=>{
+    if(!t||(!t.status||t.status==='complete')===false)return;
+    const key=String(t.transaction_id||`${bundle?.league?.league_id||''}|${t.created||''}|${t.week||''}`);if(seen.has(key))return;seen.add(key);
+    const time=Number(t.created)||0;if(!time)return;
+    const droppedRoster=t?.drops?.[id],addedRoster=t?.adds?.[id];
+    if(droppedRoster!=null){const mid=t?.roster_owner_map?.[String(droppedRoster)]||bundle?.ownerByRoster?.[String(droppedRoster)];if(mid)events.push({time,type:'release',managerId:String(mid),season:String(bundle?.league?.season||'')})}
+    if(addedRoster!=null){const mid=t?.roster_owner_map?.[String(addedRoster)]||bundle?.ownerByRoster?.[String(addedRoster)];if(mid)events.push({time,type:'acquire',managerId:String(mid),season:String(bundle?.league?.season||'')})}
+  }));
+  events.sort((a,b)=>a.time-b.time||(a.type==='release'?-1:1));
+  const totals=new Map(),open=new Map();
+  for(const e of events){
+    if(e.type==='acquire'){if(!open.has(e.managerId))open.set(e.managerId,e.time)}
+    else if(open.has(e.managerId)){const start=open.get(e.managerId),span=Math.max(0,e.time-start);totals.set(e.managerId,(totals.get(e.managerId)||0)+span);open.delete(e.managerId)}
+  }
+  const current=playerCurrentOwner(id),now=Date.now();
+  if(current.id&&open.has(current.id)){const start=open.get(current.id);totals.set(current.id,(totals.get(current.id)||0)+Math.max(0,now-start))}
+  return [...totals.entries()].map(([managerId,ms])=>({managerId,ms,days:Math.max(0,Math.floor(ms/864e5))})).sort((a,b)=>b.ms-a.ms);
+}
+function playerChemistryByManager(playerId){
+  const pid=String(playerId),merged=new Map(),sportSeason=String(state.sportState?.season||''),sportWeek=Number(state.sportState?.week)||0;
+  safeArray(state.bundles).filter(b=>safeArray(b?.matchups).length).forEach(bundle=>{
+    const season=String(bundle?.league?.season||''),scoring=bundle?.league?.scoring_settings||{},anchor=chemistrySeasonAnchor(season),isLiveSeason=season===sportSeason;
+    safeArray(bundle?.matchups).forEach(row=>{
+      const starters=[...new Set(safeArray(row?.starters).map(String).filter(Boolean))];if(!starters.includes(pid))return;
+      const week=Number(row?.week)||0;if(!week||(isLiveSeason&&sportWeek>0&&week>=sportWeek))return;
+      const managerId=String(bundle?.ownerByRoster?.[String(row?.roster_id)]||'');if(!managerId)return;
+      if(!chemistryPlayerOwnedByManagerAtWeek(bundle,managerId,pid,week))return;
+      const selected=chemistrySelectedPoints(row,pid);if(!Number.isFinite(selected))return;
+      const games=chemistryRowsForPlayerWeek(pid,season,week,scoring,anchor,selected);if(!games.length)return;
+      const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!Number.isFinite(best)||best<=0)return;
+      const x=merged.get(managerId)||{managerId,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};
+      x.captured+=selected;x.available+=best;x.starts+=1;if(Math.abs(selected-best)<0.05)x.perfect+=1;x.seasons.add(season);merged.set(managerId,x);
+    });
+  });
+  return [...merged.values()].map(x=>({...x,chemistry:x.available>0?Math.max(0,Math.min(100,x.captured/x.available*100)):0})).sort((a,b)=>b.chemistry-a.chemistry||b.starts-a.starts);
+}
+async function ensurePlayerHistoryChemistryData(playerId){
+  const pid=String(playerId);try{await ensureOlderHistoryLoaded()}catch(_){ }
+  for(const bundle of safeArray(state.bundles).filter(b=>safeArray(b?.matchups).length)){
+    const season=String(bundle?.league?.season||'');if(!season)continue;state.gameLogs[season]??={};
+    if(safeArray(state.gameLogs?.[season]?.[pid]).length)continue;
+    try{const result=await loadPlayerGameLogAverage(pid,season,bundle?.league?.scoring_settings||{});if(result?.rows)state.gameLogs[season][pid]=result.rows}catch(error){console.warn('Player history chemistry unavailable',pid,season,error)}
+  }
+}
+function playerCareerSummaryHTML(playerId,trades){
+  const id=String(playerId),origin=playerDraftOrigin(id),longest=playerOwnershipDurations(id)[0]||null,chemistry=playerChemistryByManager(id).filter(x=>x.starts>=3)[0]||null;
+  const draftedName=origin?.pickedBy?playerManagerNameForSeason(origin.pickedBy,origin.season):'—',draftedMeta=origin?`${origin.label}`:'No loaded IMO draft record';
+  const longestName=longest?playerManagerNameAny(longest.managerId):'—',longestMeta=longest?`${longest.days.toLocaleString('en-AU')} days of known ownership`:'No complete ownership span available';
+  const chemistryName=chemistry?playerManagerNameAny(chemistry.managerId):'—',chemistryStatusRow=chemistry?chemistryStatus(chemistry.chemistry,chemistry.starts):null,chemistryMeta=chemistry?`${chemistryName} · ${chemistry.starts} starts · ${chemistryStatusRow.icon} ${chemistryStatusRow.label}`:'Minimum 3 starts required';
+  return `<section class="player-career-summary"><div class="player-career-heading"><span class="eyebrow">IMO CAREER</span></div><div class="player-career-grid"><div><span>TEAM DRAFTED BY</span><strong>${esc(draftedName)}</strong><small>${esc(draftedMeta)}</small></div><div><span>LONGEST OWNER</span><strong>${esc(longestName)}</strong><small>${esc(longestMeta)}</small></div><div><span>BEST CHEMISTRY</span><strong>${chemistry?`${chemistry.chemistry.toFixed(1)}%`:'—'}</strong><small>${esc(chemistryMeta)}</small></div><div><span>CAREER TRADES</span><strong>${trades.length}</strong><small>Across loaded IMO history</small></div></div></section>`;
+}
+function playerHistoryHTML(playerId){const id=String(playerId),name=playerName(id),trades=playerTrades(id),owner=playerCurrentOwner(id),avatar=`https://sleepercdn.com/content/nba/players/${id}.jpg`,seasonAvg=playerCurrentAverage(id),efficiency=playerFptsPer36(id,seasonAvg.season,seasonAvg.avg),profileTags=playerProfileTagsHTML(id,seasonAvg,efficiency),treeManagers=returnTreeManagers(id),treeControl=treeManagers.length?`<div class="return-tree-launch"><div><span class="eyebrow">TRADE RETURN CHAIN</span><strong>Follow a former owner's return one asset at a time</strong></div>${treeManagers.length>1?`<select data-return-tree-manager aria-label="Choose manager return chain">${treeManagers.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · traded ${fmt(x.trade.created,true)}</option>`).join('')}</select>`:`<input type="hidden" data-return-tree-manager value="${esc(treeManagers[0].id)}">`}<button type="button" data-open-return-tree="${esc(id)}">View Trade Return Chain</button></div>`:'';return `<div class="player-history-hero"><span class="player-history-avatar"><img src="${esc(avatar)}" alt="" onerror="this.style.display='none'"></span><div class="player-history-main"><span class="eyebrow player-owner-label">OWNED BY ${esc(owner.name.toUpperCase())}</span><div class="player-title-row"><h2 id="playerHistoryTitle">${esc(name)}</h2></div></div><div class="player-current-average player-efficiency-stats"><div><span>FPTS/G</span><strong>${seasonAvg.avg>0?seasonAvg.avg.toFixed(2):'—'}</strong></div><div class="player-efficiency-secondary"><span>MPG</span><strong>${efficiency.mpg>0?efficiency.mpg.toFixed(1):'—'}</strong></div><div class="player-efficiency-secondary"><span>FPTS/36</span><strong>${fpts36Display(efficiency)}</strong></div><small>${seasonAvg.games?`${seasonAvg.games} games · ${esc(seasonAvg.season)}`:'Season not started'}</small>${profileTags}</div></div>${playerCareerSummaryHTML(id,trades)}${treeControl}<section class="player-journey"><div class="player-journey-heading"><span class="eyebrow">IMO JOURNEY</span><strong>Trade Timeline</strong></div><div class="player-history-timeline">${trades.length?trades.map((t,i)=>`<details class="player-history-trade" ${i===0?'open':''}><summary><span class="player-history-index">${trades.length-i}</span><span><strong>${mids(t).map(mid=>esc(managerName(mid,t))).join(' ↔ ')}</strong><small>${fmt(t.created)} · ${esc(t.season_label||'')}</small></span><span class="player-history-view">View trade</span></summary><div class="trade-detail-body">${tradeDetailsHTML(t)}</div></details>`).join(''):'<div class="profile-empty">No trades involving this player were found in the loaded league history.</div>'}</div></section>`}
 async function openPlayerHistory(playerId){
   const modal=$("playerHistoryModal"),content=$("playerHistoryContent");if(!modal||!content)return;
   const id=String(playerId);modal.classList.add("open");modal.setAttribute("aria-hidden","false");modal.dataset.playerId=id;document.body.classList.add("player-history-open");
   content.innerHTML='<div class="manager-profile-loading"><strong>Loading player season metrics…</strong><small>Resolving current-season data and the 2025 fallback.</small></div>';
   const currentSeason=String(state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)?.league?.season||'2026');
-  try{await ensurePlayerEfficiencyData([id],currentSeason)}catch(error){console.warn('Player efficiency hydration failed:',error)}
+  try{await Promise.allSettled([ensurePlayerEfficiencyData([id],currentSeason),ensurePlayerHistoryChemistryData(id)])}catch(error){console.warn('Player profile hydration failed:',error)}
   if(modal.dataset.playerId===id)content.innerHTML=playerHistoryHTML(id);
 }
 function closePlayerHistory(){const modal=$("playerHistoryModal");if(!modal)return;modal.classList.remove("open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("player-history-open")}
