@@ -3188,3 +3188,6 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
   .player-career-grid{background:#292d33!important}
   .player-career-grid>div{background:#191c21!important}
 }
+
+/* IMO 4.0.1 — five-stat player career strip */
+@media (min-width:761px){.player-career-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important}}
