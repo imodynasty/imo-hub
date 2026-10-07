@@ -2916,15 +2916,19 @@ function playerOwnershipDurations(playerId){
 function playerChemistryByManager(playerId){
   const pid=String(playerId),merged=new Map(),sportSeason=String(state.sportState?.season||''),sportWeek=Number(state.sportState?.week)||0;
   safeArray(state.bundles).filter(b=>safeArray(b?.matchups).length).forEach(bundle=>{
-    const season=String(bundle?.league?.season||''),scoring=bundle?.league?.scoring_settings||{},anchor=chemistrySeasonAnchor(season),isLiveSeason=season===sportSeason;
-    safeArray(bundle?.matchups).forEach(row=>{
+    const season=String(bundle?.league?.season||''),scoring=bundle?.league?.scoring_settings||{},isLiveSeason=season===sportSeason;
+    const archived=archivedMatchupRowsForBundle(bundle),rows=archived||safeArray(bundle?.matchups);
+    rows.forEach(row=>{
       const starters=[...new Set(safeArray(row?.starters).map(String).filter(Boolean))];if(!starters.includes(pid))return;
       const week=Number(row?.week)||0;if(!week||(isLiveSeason&&sportWeek>0&&week>=sportWeek))return;
-      const managerId=String(bundle?.ownerByRoster?.[String(row?.roster_id)]||'');if(!managerId)return;
+      const managerId=historicalManagerIdForRoster(bundle,row?.roster_id);if(!managerId)return;
       if(!chemistryPlayerOwnedByManagerAtWeek(bundle,managerId,pid,week))return;
-      const selected=chemistrySelectedPoints(row,pid);if(!Number.isFinite(selected))return;
-      const games=chemistryRowsForPlayerWeek(pid,season,week,scoring,anchor,selected);if(!games.length)return;
-      const best=Math.max(...games.map(x=>Number(x.fpts)).filter(Number.isFinite));if(!Number.isFinite(best)||best<=0)return;
+      // Historical Player History Chemistry must use the exact NBA game selected
+      // in Sleeper's authenticated matchup_legs archive. Public players_points is
+      // not reliable for NBA Game Pick Mode and previously inflated former-owner %s.
+      const data=rivalrySelectedGameData(row,pid,season,bundle,week);
+      const selected=data.selected,best=data.best;
+      if(!Number.isFinite(selected)||!Number.isFinite(best)||best<=0)return;
       const x=merged.get(managerId)||{managerId,captured:0,available:0,starts:0,perfect:0,seasons:new Set()};
       x.captured+=selected;x.available+=best;x.starts+=1;if(Math.abs(selected-best)<0.05)x.perfect+=1;x.seasons.add(season);merged.set(managerId,x);
     });
@@ -2933,6 +2937,7 @@ function playerChemistryByManager(playerId){
 }
 async function ensurePlayerHistoryChemistryData(playerId){
   const pid=String(playerId);try{await ensureOlderHistoryLoaded()}catch(_){ }
+  try{await loadRivalryHistoryArchive()}catch(_){ }
   for(const bundle of safeArray(state.bundles).filter(b=>safeArray(b?.matchups).length)){
     const season=String(bundle?.league?.season||'');if(!season)continue;state.gameLogs[season]??={};
     if(safeArray(state.gameLogs?.[season]?.[pid]).length)continue;

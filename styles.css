@@ -3191,3 +3191,25 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
 
 /* IMO 4.0.1 — five-stat player career strip */
 @media (min-width:761px){.player-career-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important}}
+
+
+/* IMO 4.0.2 — desktop top navigation restored; no persistent sidebar */
+@media(min-width:1001px){
+  body{padding-left:0!important}
+  .site-header.v26-header{position:sticky!important;left:auto!important;top:0!important;bottom:auto!important;width:auto!important;height:auto!important;min-height:78px!important;padding:12px max(18px,calc((100vw - 1380px)/2))!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important;background:#111316!important;border:0!important;border-top:2px solid #ef3038!important;border-bottom:1px solid #292d33!important;z-index:100}
+  .v26-brand{display:flex!important;align-items:center!important;gap:12px!important;padding:0!important;border:0!important}
+  .brand-mark{width:64px!important;height:48px!important;flex:0 0 64px!important}
+  .v26-brand-copy h1{font-size:17px!important}.v26-brand-copy .eyebrow,.v26-brand-copy p{display:none!important}
+  .v26-header-actions{display:flex!important;flex-direction:row!important;align-items:center!important;gap:10px!important;margin-top:0!important}
+  #statusText{order:0;margin:0!important;padding:0!important}
+  .global-search-launch{order:1;width:46px!important;height:46px!important;display:grid!important;place-items:center!important;padding:0!important;border:1px solid #292d33!important;border-radius:13px!important;background:#171a1f!important}
+  .global-search-launch small{display:none!important}
+  .hub-nav-menu{order:2!important;display:block!important;width:auto!important;position:relative!important}
+  .hub-nav-trigger{display:flex!important;min-width:150px!important;height:46px!important;align-items:center!important;justify-content:center!important;gap:10px!important;border-radius:13px!important}
+  .hub-nav-popover{display:none!important;position:absolute!important;right:0!important;top:calc(100% + 10px)!important;width:310px!important;padding:10px!important;background:#111820!important;border:1px solid #303947!important;border-radius:18px!important;box-shadow:0 20px 50px rgba(0,0,0,.45)!important}
+  .hub-nav-menu[open] .hub-nav-popover{display:flex!important;flex-direction:column!important;gap:5px!important}
+  .hub-nav-item{min-height:58px!important;display:grid!important;grid-template-columns:40px minmax(0,1fr)!important;gap:10px!important;padding:9px 12px!important;border:1px solid transparent!important;border-radius:12px!important;background:transparent!important}
+  .hub-nav-item:hover{background:#202329!important}.hub-nav-item small{display:block!important}
+  main{width:min(1380px,calc(100% - 48px))!important;margin:30px auto 72px!important}
+  footer{width:min(1380px,calc(100% - 48px))!important}
+}
