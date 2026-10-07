@@ -3473,6 +3473,103 @@ function openMockDraftToOverall(overall){
 }
 function closeMockDraft(){const modal=$("mockDraftModal");modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('mock-draft-open')}
 
+/* ===== 19–0 CHALLENGE ===== */
+const NINETEEN_ZERO_SEASONS=[
+  {season:'2024',label:'24/25',leagueId:'1138349648558624768'},
+  {season:'2025',label:'25/26',leagueId:'1212553673821929472'}
+];
+const NINETEEN_ZERO_STORAGE='imo-dynasty-19-0-v1';
+const NINETEEN_ZERO_SLOTS=['G','F','C','UTIL','UTIL'];
+let nineteenZeroSession=null;
+function nineteenZeroTeamAbbr(player){return String(player?.team||player?.team_abbr||player?.team_abbreviation||'NBA').toUpperCase()}
+function nineteenZeroProfile(player){
+  const raw=[player?.position,...safeArray(player?.fantasy_positions),...safeArray(player?.positions)].filter(Boolean).map(x=>String(x).toUpperCase());
+  const hasGuard=raw.some(x=>['PG','SG','G'].includes(x)||x.includes('GUARD'));
+  const hasForward=raw.some(x=>['SF','PF','F'].includes(x)||x.includes('FORWARD'));
+  const hasCenter=raw.some(x=>x==='C'||x.includes('CENTER'));
+  const eligible=[];if(hasGuard)eligible.push('G');if(hasForward)eligible.push('F');if(hasCenter)eligible.push('C');
+  return {eligible:eligible.length?eligible:['UTIL'],label:eligible.length?eligible.join(' / '):'UTIL'};
+}
+function nineteenZeroSeasonRules(){
+  const base=[...NINETEEN_ZERO_SEASONS],known=new Set(base.map(x=>x.season));
+  state.bundles.forEach(bundle=>{const season=String(bundle?.league?.season||''),year=Number(season),finished=String(bundle?.league?.status||'').toLowerCase()==='complete'||meaningfulWeeks(bundle).length>=18;if(!Number.isInteger(year)||known.has(season)||year<2024||!finished)return;known.add(season);base.push({season,label:`${String(year).slice(-2)}/${String(year+1).slice(-2)}`,leagueId:String(bundle?.league?.league_id||'')})});
+  return base.sort((a,b)=>Number(a.season)-Number(b.season));
+}
+function nineteenZeroBundle(season){const rule=nineteenZeroSeasonRules().find(x=>x.season===String(season));return state.bundles.find(b=>String(b?.league?.season)===String(season))||state.bundles.find(b=>String(b?.league?.league_id)===String(rule?.leagueId))||null}
+async function loadNineteenZeroPool(){
+  await ensureFullPlayerDirectory();
+  const rows=[];
+  for(const rule of nineteenZeroSeasonRules()){
+    const bundle=nineteenZeroBundle(rule.season);
+    if(!bundle)continue;
+    const payload=await loadBulkSeasonPayload(rule.season),scoring=bundle.league?.scoring_settings||{};
+    bulkSeasonRows(payload).forEach(row=>{
+      const id=bulkRowPlayerId(row),stats=bulkRowStats(row),games=Number(stats?.gp),total=scoreSeasonStats(stats,scoring),average=games>0&&Number.isFinite(total)?total/games:0;
+      if(!id||games<10||average<18)return;
+      const p=state.players[id]||{},profile=nineteenZeroProfile(p);
+      rows.push({key:`${id}|${rule.season}`,id:String(id),season:rule.season,seasonLabel:rule.label,name:playerName(id),team:nineteenZeroTeamAbbr(p),eligible:profile.eligible,eligibility:profile.label,average,games});
+    });
+  }
+  return rows.sort((a,b)=>b.average-a.average||a.name.localeCompare(b.name));
+}
+function saveNineteenZeroSession(){try{localStorage.setItem(NINETEEN_ZERO_STORAGE,JSON.stringify(nineteenZeroSession))}catch(_){}}
+function loadNineteenZeroSession(){try{const saved=JSON.parse(localStorage.getItem(NINETEEN_ZERO_STORAGE)||'null');return saved&&Array.isArray(saved.pool)&&Array.isArray(saved.picks)?saved:null}catch(_){return null}}
+function newNineteenZeroSession(pool){return {pool,picks:[],shown:[],assigned:{},selectedKey:null,complete:false}}
+function nineteenZeroAvailable(session){
+  const pickedIds=new Set(session.picks.map(x=>x.id));
+  return session.pool.filter(x=>!session.shown.includes(x.key)&&!pickedIds.has(x.id));
+}
+function nextNineteenZeroOptions(session){
+  const available=nineteenZeroAvailable(session);if(!available.length)return [];
+  const pickedIds=new Set(session.picks.map(x=>x.id)),options=[];
+  /* One draw across the talent range keeps every three-player decision meaningful. */
+  const random=()=>available[Math.floor(Math.random()*available.length)];
+  while(options.length<3&&options.length<available.length){const candidate=random();if(!options.some(x=>x.key===candidate.key)&&!pickedIds.has(candidate.id))options.push(candidate)}
+  session.shown.push(...options.map(x=>x.key));return options;
+}
+function nineteenZeroSlotEligible(player,slot){return slot==='UTIL'||player.eligible.includes(slot)}
+function nineteenZeroResult(picks){
+  const avg=picks.reduce((sum,p)=>sum+Number(p.average||0),0)/Math.max(1,picks.length);
+  let wins;if(avg>=40)wins=19;else if(avg>=37.5)wins=18;else if(avg>=35)wins=17;else if(avg>=33)wins=16;else if(avg>=30)wins=14;else if(avg>=28)wins=11;else if(avg>=25)wins=8;else wins=Math.max(1,Math.round((avg-18)*.8+3));
+  const losses=Math.max(0,19-wins);
+  let title,copy;if(wins===19){title='19–0 PERFECT SEASON';copy='Untouchable. You built the only team that matters.'}else if(wins===18){title='18–1 SO CLOSE';copy='One bad Sunday away from immortality.'}else if(wins>=16){title='TITLE FAVOURITE';copy='This five is marching straight into the finals.'}else if(wins>=13){title='CONTENDER';copy='Enough star power to make the whole league nervous.'}else if(wins>=10){title='PLAYOFF TEAM';copy='A proper eight-game squad, but not quite a juggernaut.'}else if(wins>=7){title='LOTTERY BOUND';copy='The vibes are better than the win total.'}else{title='POOPERBOWL CHAMP';copy='At least the Pancake market is thriving.'}
+  return {average:avg,wins,losses,record:`${wins}–${losses}`,title,copy};
+}
+function nineteenZeroPlayerCard(player,{action='pick',selected=false}={}){
+  const avatar=`https://sleepercdn.com/content/nba/players/${encodeURIComponent(player.id)}.jpg`;
+  return `<button type="button" class="nineteen-zero-player ${selected?'selected':''}" data-19-action="${action}" data-19-key="${esc(player.key)}"><span class="nineteen-zero-headshot"><img src="${esc(avatar)}" alt="" loading="lazy" onerror="this.remove()"><i>${esc(player.name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''))}</i></span><span class="nineteen-zero-player-copy"><strong>${esc(player.name)}</strong><small>${esc(player.seasonLabel)} · ${esc(player.team)}</small><em>${esc(player.eligibility)} eligible</em></span><span class="nineteen-zero-card-mark">${action==='pick'?'DRAFT':'ASSIGN'}</span></button>`;
+}
+function renderNineteenZero(){
+  const root=$('nineteenZeroContent');if(!root||!nineteenZeroSession)return;
+  const s=nineteenZeroSession,assignedKeys=new Set(Object.values(s.assigned)),result=s.picks.length===5&&Object.keys(s.assigned).length===5?nineteenZeroResult(s.picks):null;
+  if(result)s.complete=true;
+  const roster=NINETEEN_ZERO_SLOTS.map((slot,index)=>{const key=s.assigned[index],player=s.picks.find(p=>p.key===key),canUse=s.selectedKey&&nineteenZeroSlotEligible(s.picks.find(p=>p.key===s.selectedKey)||{},slot)&&!key;return `<button type="button" class="nineteen-zero-slot ${player?'filled':''} ${canUse?'available':''}" data-19-slot="${index}" ${key?'disabled':''}><span>${slot}</span><strong>${player?esc(player.name):'Open slot'}</strong><small>${player?`${esc(player.seasonLabel)} · ${esc(player.team)}`:canUse?'Tap to lock':'—'}</small></button>`}).join('');
+  if(result){root.innerHTML=`<header class="nineteen-zero-header result"><span class="eyebrow">IMO DYNASTY · 19–0 CHALLENGE</span><h2 id="nineteenZeroTitle">${esc(result.title)}</h2><p>${esc(result.copy)}</p></header><section class="nineteen-zero-result"><div class="nineteen-zero-record"><span>YOUR RECORD</span><strong>${result.record}</strong><small>${result.average.toFixed(2)} FPTS/G per player</small></div><div class="nineteen-zero-final-five">${s.picks.map(p=>`<div><b>${esc(p.name)}</b><span>${esc(p.seasonLabel)} · ${esc(p.team)}</span><strong>${p.average.toFixed(2)} FPTS/G</strong></div>`).join('')}</div><div class="nineteen-zero-result-actions"><button type="button" class="nineteen-zero-primary" data-19-download>Download 1080 × 1350 PNG</button><button type="button" class="nineteen-zero-secondary" data-19-restart>Run it back</button></div></section>`;saveNineteenZeroSession();return}
+  const unassigned=s.picks.filter(p=>!assignedKeys.has(p.key)),options=s.picks.length<5&&unassigned.length===0?nextNineteenZeroOptions(s):[];
+  const currentOptions=options.length?options:[];
+  const pickCount=s.picks.length;
+  root.innerHTML=`<header class="nineteen-zero-header"><span class="eyebrow">IMO DYNASTY · THE 19–0 CHALLENGE</span><h2 id="nineteenZeroTitle">Build the perfect season.</h2><p>Draft five player-seasons from the best of 24/25 and 25/26. No rerolls. No FPTS/G until the reveal.</p><div class="nineteen-zero-progress"><b>${pickCount}/5 drafted</b><span>${unassigned.length?'Assign your drafted player to a position.':'Choose one player from this three-player draw.'}</span></div></header><section class="nineteen-zero-board"><div class="nineteen-zero-draw"><div class="nineteen-zero-section-title"><span>THE DRAW</span><small>${pickCount<5?'Pick one · the other two are gone':'Starting five locked'}</small></div>${unassigned.length?`<div class="nineteen-zero-assignment">${unassigned.map(p=>nineteenZeroPlayerCard(p,{action:'assign',selected:s.selectedKey===p.key})).join('')}<p>Select a drafted player, then lock them into an eligible position.</p></div>`:`<div class="nineteen-zero-options">${currentOptions.map(p=>nineteenZeroPlayerCard(p)).join('')}</div>`}</div><div class="nineteen-zero-roster"><div class="nineteen-zero-section-title"><span>YOUR STARTING FIVE</span><small>Positions lock permanently</small></div><div class="nineteen-zero-slots">${roster}</div></div></section>`;
+  saveNineteenZeroSession();
+}
+async function openNineteenZero(){
+  const modal=$('nineteenZeroModal'),root=$('nineteenZeroContent');modal?.classList.add('open');modal?.setAttribute('aria-hidden','false');document.body.classList.add('nineteen-zero-open');
+  nineteenZeroSession=loadNineteenZeroSession();
+  if(nineteenZeroSession){renderNineteenZero();return}
+  root.innerHTML='<div class="nineteen-zero-loading"><span>19–0</span><strong>Building the player-season pool…</strong><small>Checking every 24/25 and 25/26 NBA player against IMO scoring.</small></div>';
+  try{const pool=await loadNineteenZeroPool();nineteenZeroSession=newNineteenZeroSession(pool);renderNineteenZero()}catch(error){console.error('19–0 pool failed',error);root.innerHTML='<div class="nineteen-zero-loading"><strong>Could not load the challenge pool.</strong><small>Please check your connection and try again.</small></div>'}
+}
+function closeNineteenZero(){const modal=$('nineteenZeroModal');modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('nineteen-zero-open')}
+function resetNineteenZero(){try{localStorage.removeItem(NINETEEN_ZERO_STORAGE)}catch(_){};nineteenZeroSession=null;openNineteenZero()}
+async function drawNineteenZeroShareCard(){
+  const s=nineteenZeroSession,result=nineteenZeroResult(s.picks),canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1350;const ctx=canvas.getContext('2d');
+  const bg=ctx.createLinearGradient(0,0,1080,1350);bg.addColorStop(0,'#0d1530');bg.addColorStop(.58,'#060814');bg.addColorStop(1,'#211127');ctx.fillStyle=bg;ctx.fillRect(0,0,1080,1350);ctx.strokeStyle='#8c72ff';ctx.lineWidth=8;ctx.strokeRect(36,36,1008,1278);
+  ctx.fillStyle='#b8aaff';ctx.font='900 28px Inter,Arial,sans-serif';ctx.fillText('IMO DYNASTY',82,112);ctx.fillStyle='#f5f7fb';ctx.font='900 20px Inter,Arial,sans-serif';ctx.fillText('19–0 CHALLENGE',82,148);ctx.textAlign='center';ctx.fillStyle=result.wins===19?'#ffd166':'#38e07e';ctx.font='1000 166px Inter,Arial,sans-serif';ctx.fillText(result.record,540,350);ctx.fillStyle='#f5f7fb';ctx.font='900 36px Inter,Arial,sans-serif';ctx.fillText(result.title,540,414);ctx.fillStyle='#929daf';ctx.font='700 25px Inter,Arial,sans-serif';ctx.fillText(`${result.average.toFixed(2)} FPTS/G PER PLAYER`,540,458);ctx.textAlign='left';
+  const images=await Promise.all(s.picks.map(p=>loadImageAsset(`https://sleepercdn.com/content/nba/players/${encodeURIComponent(p.id)}.jpg`)));
+  s.picks.forEach((p,i)=>{const y=520+i*135,img=images[i];fillRoundedRect(ctx,82,y,916,112,18,'rgba(16,21,31,.9)','rgba(140,114,255,.46)',2);if(img)drawCoverImage(ctx,img,98,y+12,88,88,15);else drawAvatarFallback(ctx,98,y+12,88,p.name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''));ctx.fillStyle='#f5f7fb';ctx.font='900 29px Inter,Arial,sans-serif';ctx.fillText(p.name,210,y+45);ctx.fillStyle='#b8aaff';ctx.font='800 18px Inter,Arial,sans-serif';ctx.fillText(`${p.seasonLabel} · ${p.team} · ${p.eligibility}`,210,y+78);ctx.textAlign='right';ctx.fillStyle='#38e07e';ctx.font='1000 28px Inter,Arial,sans-serif';ctx.fillText(`${p.average.toFixed(2)} FPTS/G`,966,y+63);ctx.textAlign='left'});
+  ctx.fillStyle='#929daf';ctx.font='800 16px Inter,Arial,sans-serif';ctx.fillText('SLEEPER / IMO FPTS · 10+ NBA games · 18+ FPTS/G eligibility',82,1258);ctx.textAlign='right';ctx.fillText('1080 × 1350',998,1258);ctx.textAlign='left';return canvas;
+}
+async function downloadNineteenZeroShareCard(button){if(!nineteenZeroSession?.complete)return;button.disabled=true;button.textContent='Preparing PNG…';try{const canvas=await drawNineteenZeroShareCard(),blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(new Error('PNG export failed')),'image/png')),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`imo-dynasty-19-0-${nineteenZeroResult(nineteenZeroSession.picks).record}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1200);button.textContent='PNG downloaded'}catch(error){console.error(error);button.textContent='Try PNG export again'}finally{button.disabled=false}}
+
 function safeRender(name,fn){try{fn()}catch(error){console.error(`Failed to render ${name}:`,error)}}
 function yieldToBrowser(){return new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)))}
 function powerMarketPill(){return $("powerRankings")?.closest(".panel")?.querySelector(".period-pill")||null}
@@ -4332,6 +4429,12 @@ document.addEventListener("pointerup",e=>{
 document.addEventListener("click",e=>{
   const hubNav=e.target.closest?.(".hub-nav-menu");
   if(hubNav&&!e.target.closest(".hub-nav-trigger")){setTimeout(()=>{hubNav.open=false},0)}
+  if(e.target.closest('#nineteenZeroBtn')){openNineteenZero();return}
+  if(e.target.closest('[data-close-nineteen-zero]')||e.target.closest('#nineteenZeroClose')){closeNineteenZero();return}
+  const nineteenAction=e.target.closest('[data-19-action]');if(nineteenAction&&nineteenZeroSession){const player=nineteenZeroSession.pool.find(x=>x.key===nineteenAction.dataset['19Key']);if(player){if(nineteenAction.dataset['19Action']==='pick'&&nineteenZeroSession.picks.length<5){nineteenZeroSession.picks.push(player);nineteenZeroSession.selectedKey=player.key;renderNineteenZero()}else if(nineteenAction.dataset['19Action']==='assign'){nineteenZeroSession.selectedKey=nineteenZeroSession.selectedKey===player.key?null:player.key;renderNineteenZero()}}return}
+  const nineteenSlot=e.target.closest('[data-19-slot]');if(nineteenSlot&&nineteenZeroSession?.selectedKey){const index=Number(nineteenSlot.dataset['19Slot']),player=nineteenZeroSession.picks.find(x=>x.key===nineteenZeroSession.selectedKey);if(player&&Number.isInteger(index)&&!nineteenZeroSession.assigned[index]&&nineteenZeroSlotEligible(player,NINETEEN_ZERO_SLOTS[index])){nineteenZeroSession.assigned[index]=player.key;nineteenZeroSession.selectedKey=null;renderNineteenZero()}return}
+  if(e.target.closest('[data-19-restart]')){resetNineteenZero();return}
+  const nineteenDownload=e.target.closest('[data-19-download]');if(nineteenDownload){downloadNineteenZeroShareCard(nineteenDownload);return}
   if(e.target.closest("#globalSearchBtn")){openGlobalSearch();return}
   if(e.target.closest("[data-close-global-search]")||e.target.closest("#globalSearchClose")){closeGlobalSearch();return}
   if(e.target.closest("[data-global-search-back]")){renderGlobalSearchResults($("globalSearchInput")?.value||"");return}
@@ -4400,6 +4503,6 @@ document.addEventListener('change',e=>{
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-manager-switcher]')&&!e.target.closest('#mobileManagerSwitcherSheet'))closeManagerSwitchers()},{passive:true});
 document.addEventListener("pointerover",e=>{if(!matchMedia("(pointer:fine)").matches)return;const link=e.target.closest?.(".manager-profile-link");if(link)queueManagerProfilePrewarm(link.dataset.managerId)},{passive:true});
 document.addEventListener("focusin",e=>{const link=e.target.closest?.(".manager-profile-link");if(link)queueManagerProfilePrewarm(link.dataset.managerId)});
-document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
+document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("nineteenZeroModal")?.classList.contains("open"))closeNineteenZero();else if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());

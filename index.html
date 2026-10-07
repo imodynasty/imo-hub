@@ -12,7 +12,7 @@
 <link rel="manifest" href="site.webmanifest?v=3.4.2">
 <link rel="shortcut icon" href="favicon.ico?v=3.4.2">
 <title>IMO DYNASTY</title>
-<link rel="stylesheet" href="styles.css?v=4.0.6">
+<link rel="stylesheet" href="styles.css?v=4.0.8">
 </head><body><div class="noise"></div>
 <header class="site-header v26-header">
   <div class="brand v26-brand">
@@ -29,6 +29,7 @@
         <button id="managerDirectoryBtn" class="hub-nav-item" type="button"><img src="assets/manager-profiles.svg" alt=""><span><strong>Managers</strong><small>Team HQs</small></span></button>
         <button id="rivalriesBtn" class="hub-nav-item" type="button"><span class="hub-nav-glyph" aria-hidden="true">⚔</span><span><strong>Rivalries</strong><small>Head-to-head history</small></span></button>
         <button id="mockDraftBtn" class="hub-nav-item" type="button"><span class="hub-nav-glyph" aria-hidden="true">27</span><span><strong>27 Mock Draft</strong><small>Draft Room</small></span></button>
+        <button id="nineteenZeroBtn" class="hub-nav-item" type="button"><span class="hub-nav-glyph nineteen-zero-menu-glyph" aria-hidden="true">19–0</span><span><strong>19–0 Challenge</strong><small>Build a perfect season</small></span></button>
         <a class="hub-nav-item" href="https://imodynasty.github.io/bigboard/" aria-label="Open Your Big Board"><span class="hub-nav-glyph" aria-hidden="true">☷</span><span><strong>Your Big Board</strong><small>Personal rankings</small></span></a>
       </div>
     </details>
@@ -133,6 +134,13 @@
     <div id="mockDraftContent" class="mock-draft-content"></div>
   </section>
 </div>
+<div id="nineteenZeroModal" class="nineteen-zero-modal" aria-hidden="true">
+  <div class="nineteen-zero-backdrop" data-close-nineteen-zero></div>
+  <section class="nineteen-zero-sheet" role="dialog" aria-modal="true" aria-labelledby="nineteenZeroTitle">
+    <button id="nineteenZeroClose" class="nineteen-zero-close" type="button" aria-label="Close 19–0 Challenge">×</button>
+    <div id="nineteenZeroContent" class="nineteen-zero-content"></div>
+  </section>
+</div>
 <div id="managerPicksMadeModal" class="manager-picks-modal" aria-hidden="true">
   <div class="manager-picks-backdrop" data-close-manager-picks></div>
   <section class="manager-picks-sheet" role="dialog" aria-modal="true" aria-labelledby="managerPicksMadeTitle">
@@ -161,6 +169,6 @@
     <div id="playerHistoryContent" class="player-history-content"></div>
   </section>
 </div>
-<footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V3.5.28 · Not affiliated with Sleeper</span></footer>
+<footer><strong>IMO DYNASTY</strong><span>Independent league dashboard · V4.0.8 · Not affiliated with Sleeper</span></footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=4.0.6"></script></body></html>
+<script src="app.js?v=4.0.8"></script></body></html>
