@@ -3213,3 +3213,31 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
   main{width:min(1380px,calc(100% - 48px))!important;margin:30px auto 72px!important}
   footer{width:min(1380px,calc(100% - 48px))!important}
 }
+
+/* IMO 4.0.3 — compact fixed Player IMO Career strip */
+.player-career-summary{margin-top:18px!important;padding-bottom:0!important}
+.player-career-heading{margin-bottom:7px!important}
+.player-career-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:1px!important;background:#2b2e34!important;border:0!important;border-radius:14px!important;overflow:hidden!important}
+.player-career-grid>.player-career-stat{box-sizing:border-box!important;min-width:0!important;height:94px!important;max-height:94px!important;padding:12px 13px!important;background:#191c21!important;display:flex!important;flex-direction:column!important;justify-content:flex-start!important;overflow:hidden!important}
+.player-career-grid>.player-career-stat:nth-child(odd){border-right:0!important}
+.player-career-grid>.player-career-stat:nth-child(n+3){border-top:0!important}
+.player-career-grid>.player-career-stat span{font-size:7px!important;line-height:1.1!important;letter-spacing:.14em!important;white-space:nowrap!important}
+.player-career-grid>.player-career-stat strong{margin-top:5px!important;font-size:clamp(13px,1.25vw,17px)!important;line-height:1.05!important;letter-spacing:-.02em!important;overflow:hidden!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow-wrap:anywhere!important}
+.player-career-grid>.player-career-stat small{margin-top:4px!important;font-size:8px!important;line-height:1.2!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}
+.player-career-grid>.player-career-chemistry strong{font-size:18px!important;line-height:1!important}
+.player-career-grid>.player-career-trades{grid-column:1/-1!important;box-sizing:border-box!important;height:31px!important;max-height:31px!important;padding:0 12px!important;background:#15181c!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;overflow:hidden!important}
+.player-career-grid>.player-career-trades span{font-size:7px!important;line-height:1!important;font-weight:900!important;letter-spacing:.14em!important;color:#858b94!important;white-space:nowrap!important}
+.player-career-grid>.player-career-trades b{font-size:10px!important;color:#f4f6f8!important;letter-spacing:0!important}
+.player-career-grid>.player-career-trades small{margin:0!important;font-size:7px!important;line-height:1!important;color:#717780!important;white-space:nowrap!important}
+@media(max-width:760px){
+  .player-career-summary{margin-top:15px!important}
+  .player-career-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;border-radius:12px!important}
+  .player-career-grid>.player-career-stat{height:86px!important;max-height:86px!important;padding:10px 11px!important}
+  .player-career-grid>.player-career-stat:nth-child(odd){border-right:0!important}
+  .player-career-grid>.player-career-stat:nth-child(n+3){border-top:0!important}
+  .player-career-grid>.player-career-stat strong{font-size:clamp(12px,3.7vw,16px)!important;line-height:1.02!important}
+  .player-career-grid>.player-career-chemistry strong{font-size:17px!important}
+  .player-career-grid>.player-career-stat small{font-size:7.5px!important;line-height:1.15!important}
+  .player-career-grid>.player-career-trades{height:28px!important;max-height:28px!important;padding:0 10px!important}
+  .player-career-grid>.player-career-trades small{font-size:6.5px!important}
+}
