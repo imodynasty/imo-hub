@@ -677,13 +677,17 @@ function pooperbowlRows(){
   if(!ladderBundle)return[];
   const ladderThrough=inSeason?through:Infinity,ladder=standingsTable(ladderBundle,ladderThrough),teamCount=Math.max(1,ladder.length),ladderBy=Object.fromEntries(ladder.map(x=>[String(x.id),x]));
   const currentStandings=inSeason?standingsTable(current,through):[],currentBy=Object.fromEntries(currentStandings.map(x=>[String(x.id),x]));
-  const currentOutcomes=inSeason?outcomesForBundle(current,through):{},pfValues=[...state.managers.keys()].map(id=>Number(currentBy[String(id)]?.pts||0)),recentValues=[...state.managers.keys()].map(id=>{const sourceId=currentBy[String(id)]?.sourceId||String(id),games=currentOutcomes[sourceId]||currentOutcomes[String(id)]||[],last3=games.slice(-3);return last3.length?last3.reduce((sum,g)=>sum+Number(g.points||0),0)/last3.length:0});
-  const hasPF=inSeason&&pfValues.some(v=>v>0),hasRecent=inSeason&&recentValues.some(v=>v>0),rows=[...state.managers.values()].map((m,index)=>{
+  const pointsSource=inSeason?currentBy:ladderBy,pfValues=[...state.managers.keys()].map(id=>Number(pointsSource[String(id)]?.pts||0));
+  const currentOutcomes=inSeason?outcomesForBundle(current,through):{},recentValues=[...state.managers.keys()].map(id=>{const sourceId=currentBy[String(id)]?.sourceId||String(id),games=currentOutcomes[sourceId]||currentOutcomes[String(id)]||[],last3=games.slice(-3);return last3.length?last3.reduce((sum,g)=>sum+Number(g.points||0),0)/last3.length:0});
+  const powerDisplay=powerRowsForDisplay(),powerBy=Object.fromEntries(powerDisplay.rows.map(x=>[String(x.id),x])),powerCount=Math.max(1,powerDisplay.rows.length);
+  const hasPF=pfValues.some(v=>v>0),hasRecent=inSeason&&recentValues.some(v=>v>0);
+  const rows=[...state.managers.values()].map((m,index)=>{
     const ladderRow=ladderBy[String(m.id)],standingRank=Number(ladderRow?.standingRank||Math.ceil(teamCount/2)),ladderRisk=teamCount<=1?.5:(standingRank-1)/(teamCount-1);
-    const pf=Number(currentBy[String(m.id)]?.pts||0),recent=recentValues[index]||0,pfRisk=hasPF?minMax(pf,pfValues,false):.5,recentRisk=hasRecent?minMax(recent,recentValues,false):.5;
-    const riskScore=ladderRisk*.50+pfRisk*.30+recentRisk*.20;
-    return{id:String(m.id),name:m.name,standingRank,ladderRisk,pfRisk,recentRisk,riskScore,pointsFor:pf,recentAvg:recent}
-  });
+    const pf=Number(pointsSource[String(m.id)]?.pts||0),recent=recentValues[index]||0,powerRank=Number(powerBy[String(m.id)]?.rank||Math.ceil(powerCount/2)),powerRisk=powerCount<=1?.5:(powerRank-1)/(powerCount-1);
+    const pfRisk=hasPF?minMax(pf,pfValues,false):.5,recentRisk=hasRecent?minMax(recent,recentValues,false):.5;
+    const riskScore=ladderRisk*.40+pfRisk*.20+recentRisk*.20+powerRisk*.20;
+    return{id:String(m.id),name:m.name,standingRank,powerRank,ladderRisk,pfRisk,recentRisk,powerRisk,riskScore,pointsFor:pf,recentAvg:recent}
+  }).filter(row=>row.standingRank>2);
   const total=rows.reduce((sum,row)=>sum+Math.max(.0001,row.riskScore),0)||1;
   return rows.map(row=>{const fair=Math.max(.0001,row.riskScore)/total,market=Math.min(.99,fair*CONFIG.bookmakerMargin),odds=roundFive(Math.min(CONFIG.maxDisplayedOdds,Math.max(1.01,1/market)));return{...row,probability:fair,odds}}).sort((a,b)=>a.odds-b.odds||b.riskScore-a.riskScore||a.name.localeCompare(b.name)).map((row,index)=>({...row,riskRank:index+1,inSeason,ladderSeason:String(ladderBundle?.league?.season||'')}))
 }
