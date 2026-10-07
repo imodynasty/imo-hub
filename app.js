@@ -3492,7 +3492,8 @@ function nineteenZeroProfile(player){
 }
 function nineteenZeroSeasonRules(){
   const base=[...NINETEEN_ZERO_SEASONS],known=new Set(base.map(x=>x.season));
-  state.bundles.forEach(bundle=>{const season=String(bundle?.league?.season||''),year=Number(season),finished=String(bundle?.league?.status||'').toLowerCase()==='complete'||meaningfulWeeks(bundle).length>=18;if(!Number.isInteger(year)||known.has(season)||year<2024||!finished)return;known.add(season);base.push({season,label:`${String(year).slice(-2)}/${String(year+1).slice(-2)}`,leagueId:String(bundle?.league?.league_id||'')})});
+  const liveSeason=String(state.bundles.find(bundle=>String(bundle?.league?.league_id)===String(CONFIG.currentLeagueId))?.league?.season||'');
+  state.bundles.forEach(bundle=>{const season=String(bundle?.league?.season||''),year=Number(season),finished=String(bundle?.league?.status||'').toLowerCase()==='complete'||meaningfulWeeks(bundle).length>=18,isLiveCurrentSeason=season===liveSeason;if(!Number.isInteger(year)||known.has(season)||year<2024||(!finished&&!isLiveCurrentSeason))return;known.add(season);base.push({season,label:`${String(year).slice(-2)}/${String(year+1).slice(-2)}`,leagueId:String(bundle?.league?.league_id||'')})});
   return base.sort((a,b)=>Number(a.season)-Number(b.season));
 }
 function nineteenZeroBundle(season){const rule=nineteenZeroSeasonRules().find(x=>x.season===String(season));return state.bundles.find(b=>String(b?.league?.season)===String(season))||state.bundles.find(b=>String(b?.league?.league_id)===String(rule?.leagueId))||null}
@@ -3557,7 +3558,7 @@ async function openNineteenZero(){
   const modal=$('nineteenZeroModal'),root=$('nineteenZeroContent');modal?.classList.add('open');modal?.setAttribute('aria-hidden','false');document.body.classList.add('nineteen-zero-open');
   nineteenZeroSession=loadNineteenZeroSession();
   if(nineteenZeroSession){renderNineteenZero();return}
-  root.innerHTML='<div class="nineteen-zero-loading"><span>19–0</span><strong>Building the player-season pool…</strong><small>Checking every 24/25 and 25/26 NBA player against IMO scoring.</small></div>';
+  root.innerHTML='<div class="nineteen-zero-loading"><span>19–0</span><strong>Building the player-season pool…</strong><small>Checking every eligible NBA player-season against IMO scoring.</small></div>';
   try{const pool=await loadNineteenZeroPool();nineteenZeroSession=newNineteenZeroSession(pool);renderNineteenZero()}catch(error){console.error('19–0 pool failed',error);root.innerHTML='<div class="nineteen-zero-loading"><strong>Could not load the challenge pool.</strong><small>Please check your connection and try again.</small></div>'}
 }
 function closeNineteenZero(){const modal=$('nineteenZeroModal');modal?.classList.remove('open');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('nineteen-zero-open')}
