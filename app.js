@@ -671,6 +671,34 @@ function renderPower(){
   markPowerMarketState("live");
   persistVerifiedMarketHTML();
 }
+function pooperbowlRows(){
+  const current=currentLeagueBundle();if(!current)return[];
+  const currentWeeks=meaningfulWeeks(current),inSeason=currentWeeks.length>0,through=inSeason?currentWeeks.at(-1):Infinity,ladderBundle=inSeason?current:previousCompletedBundle(current);
+  if(!ladderBundle)return[];
+  const ladderThrough=inSeason?through:Infinity,ladder=standingsTable(ladderBundle,ladderThrough),teamCount=Math.max(1,ladder.length),ladderBy=Object.fromEntries(ladder.map(x=>[String(x.id),x]));
+  const currentStandings=inSeason?standingsTable(current,through):[],currentBy=Object.fromEntries(currentStandings.map(x=>[String(x.id),x]));
+  const currentOutcomes=inSeason?outcomesForBundle(current,through):{},pfValues=[...state.managers.keys()].map(id=>Number(currentBy[String(id)]?.pts||0)),recentValues=[...state.managers.keys()].map(id=>{const sourceId=currentBy[String(id)]?.sourceId||String(id),games=currentOutcomes[sourceId]||currentOutcomes[String(id)]||[],last3=games.slice(-3);return last3.length?last3.reduce((sum,g)=>sum+Number(g.points||0),0)/last3.length:0});
+  const hasPF=inSeason&&pfValues.some(v=>v>0),hasRecent=inSeason&&recentValues.some(v=>v>0),rows=[...state.managers.values()].map((m,index)=>{
+    const ladderRow=ladderBy[String(m.id)],standingRank=Number(ladderRow?.standingRank||Math.ceil(teamCount/2)),ladderRisk=teamCount<=1?.5:(standingRank-1)/(teamCount-1);
+    const pf=Number(currentBy[String(m.id)]?.pts||0),recent=recentValues[index]||0,pfRisk=hasPF?minMax(pf,pfValues,false):.5,recentRisk=hasRecent?minMax(recent,recentValues,false):.5;
+    const riskScore=ladderRisk*.50+pfRisk*.30+recentRisk*.20;
+    return{id:String(m.id),name:m.name,standingRank,ladderRisk,pfRisk,recentRisk,riskScore,pointsFor:pf,recentAvg:recent}
+  });
+  const total=rows.reduce((sum,row)=>sum+Math.max(.0001,row.riskScore),0)||1;
+  return rows.map(row=>{const fair=Math.max(.0001,row.riskScore)/total,market=Math.min(.99,fair*CONFIG.bookmakerMargin),odds=roundFive(Math.min(CONFIG.maxDisplayedOdds,Math.max(1.01,1/market)));return{...row,probability:fair,odds}}).sort((a,b)=>a.odds-b.odds||b.riskScore-a.riskScore||a.name.localeCompare(b.name)).map((row,index)=>({...row,riskRank:index+1,inSeason,ladderSeason:String(ladderBundle?.league?.season||'')}))
+}
+function pooperbowlProjectedMatchup(){
+  const current=currentLeagueBundle();if(!current)return[];const weeks=meaningfulWeeks(current),bundle=weeks.length?current:previousCompletedBundle(current);if(!bundle)return[];const through=weeks.length?weeks.at(-1):Infinity;
+  return standingsTable(bundle,through).slice(-2).reverse()
+}
+function renderPooperbowlWatch(){
+  const target=$("pooperbowlWatchBody");if(!target)return;const rows=pooperbowlRows(),top=rows.slice(0,4),matchup=pooperbowlProjectedMatchup();target.classList.remove("loading");
+  if(!top.length){target.innerHTML='<div class="pooperbowl-empty">Pooperbowl odds will appear once league data is available.</div>';return}
+  const list=top.map((row,index)=>`<div class="pooperbowl-market-row"><span class="pooperbowl-rank">${index+1}.</span><button type="button" class="pooperbowl-manager manager-profile-link" data-manager-id="${esc(row.id)}">${esc(row.name)}</button><strong>$${Number(row.odds).toFixed(2)}</strong>${index===0?'<span class="pooperbowl-leader" title="Pancake favourite">💩</span>':'<span class="pooperbowl-leader"></span>'}</div>`).join('');
+  const matchupHTML=matchup.length>=2?`<div class="pooperbowl-matchup"><span>🥞 <b>CURRENT PROJECTED MATCHUP</b></span><div><button type="button" class="manager-profile-link" data-manager-id="${esc(matchup[0].id)}">${esc(matchup[0].name)}</button><i>vs</i><button type="button" class="manager-profile-link" data-manager-id="${esc(matchup[1].id)}">${esc(matchup[1].name)}</button></div></div>`:'';
+  target.innerHTML=`<div class="pooperbowl-subtitle">Projected odds of losing the Pooperbowl</div><div class="pooperbowl-market">${list}</div>${matchupHTML}`
+}
+
 function roundFive(x){return Math.round(x*20)/20}
 function priceRows(through){const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId);return priceRowsForBundle(current||state.modelBundle,through)}
 function renderOdds(){}
@@ -3504,6 +3532,7 @@ function rerenderVisibleLazyModules(){state.lazyHomepageModules.forEach(record=>
 // updates arriving in the same frame are deduplicated into one render pass.
 const HUB_RENDERERS={
   'power rankings':renderPower,
+  'pooperbowl watch':renderPooperbowlWatch,
   'trade of the week':renderTradeWeek,
   'recent trades':renderRecent,
   'head to head':renderHeadToHead,
@@ -3517,10 +3546,10 @@ const HUB_RENDERERS={
   'biggest trades':renderBiggestTrades,
 };
 const HUB_CHANGESETS={
-  core:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
-  current:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
-  history:['power rankings','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
-  market:['power rankings','trade of the week','biggest trades'],
+  core:['power rankings','pooperbowl watch','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
+  current:['power rankings','pooperbowl watch','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
+  history:['power rankings','pooperbowl watch','trade of the week','recent trades','head to head','ticker','leaderboard','trade partners','league records','most traded players','most waived players','biggest trades'],
+  market:['power rankings','pooperbowl watch','trade of the week','biggest trades'],
   trades:['trade of the week','recent trades','ticker','leaderboard','trade partners','league records','most traded players','biggest trades'],
   gameLogs:['player form']
 };
