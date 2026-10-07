@@ -358,6 +358,15 @@ footer span{display:flex;align-items:center;gap:6px}
 .trade-week .player-history-link:hover{color:#b8aaff}
 @media(max-width:620px){.profile-h2h-list{grid-template-columns:1fr}}
 
+/* V4.0.9 — 19–0 result reveal polish */
+.nineteen-zero-headshot.has-image i,.nineteen-zero-final-headshot.has-image i{display:none}
+.nineteen-zero-final-five{gap:9px;margin-top:18px}
+.nineteen-zero-final-player{display:grid;grid-template-columns:66px minmax(0,1fr) auto;gap:13px;align-items:center;border:1px solid rgba(140,114,255,.52);border-radius:15px;padding:9px 15px 9px 9px;background:linear-gradient(90deg,rgba(140,114,255,.08),rgba(9,13,23,.92) 32%);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.nineteen-zero-final-headshot{position:relative;width:66px;height:66px;overflow:hidden;border-radius:13px;background:radial-gradient(circle at 45% 18%,#514480,#111827 70%)}
+.nineteen-zero-final-headshot img{width:100%;height:100%;object-fit:cover;object-position:top}.nineteen-zero-final-headshot i{position:absolute;inset:0;display:grid;place-items:center;color:#d7d0ff;font-size:19px;font-style:normal;font-weight:1000}
+.nineteen-zero-final-copy{min-width:0;display:grid;gap:3px}.nineteen-zero-final-copy b{font-size:18px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nineteen-zero-final-copy small{font-size:11px;color:#b8aaff;font-weight:800}.nineteen-zero-final-slot{color:#ffd166;font-size:8px;font-weight:1000;letter-spacing:.12em}.nineteen-zero-final-player>strong{color:#38e07e;font-size:20px;white-space:nowrap}.nineteen-zero-final-player>strong em{font-size:10px;font-style:normal}
+@media(max-width:820px){.nineteen-zero-final-player{grid-template-columns:52px minmax(0,1fr) auto;gap:9px;padding:7px 10px 7px 7px}.nineteen-zero-final-headshot{width:52px;height:52px;border-radius:11px}.nineteen-zero-final-copy b{font-size:14px}.nineteen-zero-final-copy small{font-size:9px}.nineteen-zero-final-player>strong{font-size:15px}.nineteen-zero-final-player>strong em{display:block;font-size:8px}}
+
 /* V2.6.3 head-to-head record states */
 .profile-h2h-row strong{display:flex;align-items:baseline;gap:5px}
 .profile-h2h-row strong span{font-size:9px;font-weight:750;color:var(--muted)}
