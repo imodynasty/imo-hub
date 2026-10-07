@@ -3505,7 +3505,7 @@ async function loadNineteenZeroPool(){
     const payload=await loadBulkSeasonPayload(rule.season),scoring=bundle.league?.scoring_settings||{};
     bulkSeasonRows(payload).forEach(row=>{
       const id=bulkRowPlayerId(row),stats=bulkRowStats(row),games=Number(stats?.gp),total=scoreSeasonStats(stats,scoring),average=games>0&&Number.isFinite(total)?total/games:0;
-      if(!id||games<10||average<18)return;
+      if(!id||games<10||average<=17.5)return;
       const p=state.players[id]||{},profile=nineteenZeroProfile(p);
       rows.push({key:`${id}|${rule.season}`,id:String(id),season:rule.season,seasonLabel:rule.label,name:playerName(id),team:nineteenZeroTeamAbbr(p),eligible:profile.eligible,eligibility:profile.label,average,games});
     });
@@ -3531,7 +3531,7 @@ function nineteenZeroSlotEligible(player,slot){return slot==='UTIL'||player.elig
 function nineteenZeroResult(picks){
   const avg=picks.reduce((sum,p)=>sum+Number(p.average||0),0)/Math.max(1,picks.length);
   // Deterministic 19–0 scale: thresholds use the five-player FPTS/G average.
-  let wins;if(avg>=31.5)wins=19;else if(avg>=29)wins=18;else if(avg>=28)wins=17;else if(avg>=27)wins=16;else if(avg>=26.5)wins=15;else if(avg>=25.5)wins=14;else if(avg>=24.5)wins=13;else if(avg>=23.5)wins=12;else if(avg>=22.5)wins=11;else if(avg>=21.5)wins=10;else if(avg>=20.5)wins=9;else if(avg>=20)wins=8;else if(avg>=19)wins=7;else wins=1;
+  let wins;if(avg>=31.5)wins=19;else if(avg>=29)wins=18;else if(avg>=28)wins=17;else if(avg>=27)wins=16;else if(avg>=26.5)wins=15;else if(avg>=25.5)wins=14;else if(avg>=24.5)wins=13;else if(avg>=23.5)wins=12;else if(avg>=22.5)wins=11;else if(avg>=21.5)wins=10;else if(avg>=20.5)wins=9;else if(avg>=20)wins=8;else if(avg>=19)wins=7;else if(avg>=18.5)wins=6;else wins=1;
   const losses=Math.max(0,19-wins);
   let title,copy;if(wins===19){title='19–0 PERFECT SEASON';copy='Untouchable. You built the only team that matters.'}else if(wins===18){title='18–1 SO CLOSE';copy='One bad Sunday away from immortality.'}else if(wins>=16){title='TITLE FAVOURITE';copy='This five is marching straight into the finals.'}else if(wins>=13){title='CONTENDER';copy='Enough star power to make the whole league nervous.'}else if(wins>=10){title='PLAYOFF TEAM';copy='A proper eight-game squad, but not quite a juggernaut.'}else if(wins>=7){title='LOTTERY BOUND';copy='The vibes are better than the win total.'}else{title='POOPERBOWL CHAMP';copy='At least the Pancake market is thriving.'}
   return {average:avg,wins,losses,record:`${wins}–${losses}`,title,copy};
