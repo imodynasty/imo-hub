@@ -3267,3 +3267,75 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
 }
 @media(max-width:390px){.power-odds-row>summary{grid-template-columns:22px 32px minmax(0,1fr) 49px 25px 10px!important;gap:4px!important;padding:8px 5px!important}.power-avatar{width:32px!important;height:32px!important}.power-name{font-size:10px!important}.power-copy small{font-size:6px!important;letter-spacing:.025em!important}.power-market-stack{width:49px!important}.power-odds-price{font-size:12px!important}.market-tag{max-width:49px!important;font-size:5px!important}.power-odds-row>summary .movement{width:25px!important;font-size:6.5px!important}.panel-heading{gap:7px!important}.period-pill{font-size:7px!important}}
 @media(min-width:701px){.power-copy small{margin-top:4px!important}.power-odds-row>summary{align-items:center!important}.manager-profile-card-heading,.panel-heading{align-items:center!important}}
+
+/* =========================================================
+   IMO DYNASTY 4.0.5 — mobile ranking + player hero alignment
+   ========================================================= */
+@media(max-width:700px){
+  /* Power Rankings: manager name itself is the profile affordance. */
+  .power-copy small{display:none!important}
+  .power-copy{gap:0!important;justify-content:center!important}
+  .power-name{margin:0!important;align-self:center!important}
+
+  /* Player profile hero: headshot left, player name right at matching visual scale. */
+  .player-history-hero{
+    display:grid!important;
+    grid-template-columns:58px minmax(0,1fr)!important;
+    align-items:center!important;
+    gap:12px!important;
+    padding:10px 42px 16px 0!important;
+  }
+  .player-history-avatar{
+    grid-column:1!important;
+    grid-row:1!important;
+    width:58px!important;
+    height:58px!important;
+    flex:none!important;
+    align-self:center!important;
+    border-radius:14px!important;
+  }
+  .player-history-main{
+    grid-column:2!important;
+    grid-row:1!important;
+    min-width:0!important;
+    align-self:center!important;
+  }
+  .player-history-main .player-title-row{
+    display:flex!important;
+    align-items:center!important;
+    min-height:58px!important;
+    margin:0!important;
+  }
+  .player-history-main .player-title-row h2,
+  .player-history-main h2,
+  .player-title-row h2{
+    margin:0!important;
+    font-size:clamp(25px,8.2vw,34px)!important;
+    line-height:.95!important;
+    letter-spacing:-.045em!important;
+    max-width:100%!important;
+    overflow-wrap:normal!important;
+    word-break:normal!important;
+  }
+  .player-history-main>p{
+    margin:4px 0 0!important;
+    font-size:10px!important;
+    line-height:1.25!important;
+  }
+  .player-current-average{
+    grid-column:1 / -1!important;
+    grid-row:2!important;
+    width:100%!important;
+    margin-top:0!important;
+    padding:11px 0 0!important;
+  }
+}
+
+@media(max-width:390px){
+  .player-history-hero{grid-template-columns:54px minmax(0,1fr)!important;gap:10px!important}
+  .player-history-avatar{width:54px!important;height:54px!important}
+  .player-history-main .player-title-row{min-height:54px!important}
+  .player-history-main .player-title-row h2,
+  .player-history-main h2,
+  .player-title-row h2{font-size:clamp(23px,7.8vw,30px)!important}
+}
