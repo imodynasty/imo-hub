@@ -47,7 +47,7 @@ function archivedMatchupRowsForBundle(bundle){
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v4023-rolling-seasons',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV4-reliability';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v4025-verified-records',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV4-reliability';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -1080,8 +1080,19 @@ function renderFormList(targetId,rows,positive){const target=$(targetId);target.
 function renderPlayerForm(){const form=recentPlayerForm();renderFormList("poorForm",form.poor,false);renderFormList("goodForm",form.good,true)}
 function managerTradeCounts(trades){const c={};trades.forEach(t=>mids(t).forEach(id=>c[id]=(c[id]||0)+1));return c}
 function topEntry(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1])[0]}
-function highestTeamScore(bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>{const owner=b.ownerByRoster[String(m.roster_id)],pts=Number(m.points);if(owner&&Number.isFinite(pts)&&(!best||pts>best.pts))best={owner,pts,week:m.week,season:b.league.season}}));return best}
-function highestPlayerScore(bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>Object.entries(m.players_points||{}).forEach(([id,v])=>{const pts=Number(v);if(Number.isFinite(pts)&&(!best||pts>best.pts))best={id,pts,week:m.week,season:b.league.season}})));return best}
+function teamRecordRows(bundle){
+  const archived=archivedMatchupRowsForBundle(bundle),completed=new Set(completedRankingWeeks(bundle));
+  return (archived||safeArray(bundle?.matchups)).filter(row=>row.matchup_id!=null&&completed.has(Number(row.week))).map(row=>({...row,recordPoints:archived?Number(row.points):canonicalMatchupScore(row)})).filter(row=>Number.isFinite(row.recordPoints)&&row.recordPoints>0)
+}
+function highestTeamScore(bundles){
+  let best=null;
+  bundles.forEach(bundle=>teamRecordRows(bundle).forEach(row=>{
+    const owner=String(bundle.ownerByRoster?.[String(row.roster_id)]||''),pts=row.recordPoints;
+    if(owner&&(!best||pts>best.pts))best={owner,pts,week:row.week,season:bundle.league.season};
+  }));
+  return best
+}
+function highestPlayerScore(bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>Object.entries(m.players_points||{}).forEach(([id,v])=>{const pts=Number(v);if(Number.isFinite(pts)&&pts>0&&(!best||pts>best.pts))best={id,pts,week:m.week,season:b.league.season}})));return best}
 function longestTradeDroughtSince(startTs=new Date("2025-10-01T00:00:00Z").getTime()){
   const now=Date.now();
   let best=null;
@@ -1099,7 +1110,49 @@ function longestTradeDroughtSince(startTs=new Date("2025-10-01T00:00:00Z").getTi
   }
   return best;
 }
-function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const perDay={};state.trades.forEach(t=>mids(t).forEach(id=>{const key=`${id}|${new Date(t.created).toDateString()}`;perDay[key]=(perDay[key]||0)+1}));const dayTop=topEntry(perDay),[dayOwner,dayDate]=(dayTop?.[0]||'|').split('|'),teamEver=highestTeamScore(state.bundles),teamSeason=highestTeamScore([current]),playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['MOST TRADES IN A DAY',dayOwner?managerName(dayOwner):'—',dayTop?`${dayTop[1]} trades · ${dayDate}`:'No data','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(1)} pts · Week ${teamEver.week}, ${teamEver.season}`:'No data','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(1)} pts · Week ${teamSeason.week}`:'Season not started','record-blue'],['HIGHEST PLAYER SCORE EVER',playerEver?playerName(playerEver.id):'—',playerEver?`${playerEver.pts.toFixed(1)} pts · Week ${playerEver.week}, ${playerEver.season}`:'No data','record-gold'],['HIGHEST PLAYER SCORE THIS SEASON',playerSeason?playerName(playerSeason.id):'—',playerSeason?`${playerSeason.pts.toFixed(1)} pts · Week ${playerSeason.week}`:'Season not started','record-gold']];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("")}
+function biggestWinningMargin(bundles){
+  let best=null;
+  bundles.forEach(bundle=>{
+    const groups={};teamRecordRows(bundle).forEach(row=>{const key=`${row.week}|${row.matchup_id}`;(groups[key]??=[]).push(row)});
+    Object.values(groups).filter(group=>group.length===2).forEach(([a,b])=>{
+      const winner=a.recordPoints>b.recordPoints?a:b,loser=winner===a?b:a,margin=winner.recordPoints-loser.recordPoints;
+      if(margin>0&&(!best||margin>best.margin))best={margin,owner:String(bundle.ownerByRoster?.[winner.roster_id]||''),opponent:String(bundle.ownerByRoster?.[loser.roster_id]||''),winnerScore:winner.recordPoints,loserScore:loser.recordPoints,week:winner.week,season:String(bundle.league.season)};
+    });
+  });
+  return best
+}
+function selectedRecordRows(bundle){
+  return (archivedMatchupRowsForBundle(bundle)||safeArray(bundle?.matchups)).filter(row=>row.matchup_id!=null)
+}
+function selectedPlayerRecord(bundles){
+  let best=null,pending=0;
+  bundles.forEach(bundle=>{
+    const season=String(bundle.league.season);
+    selectedRecordRows(bundle).forEach(row=>safeArray(row.starters).forEach(rawId=>{
+      const id=String(rawId),target=String(row.starters_games?.[id]||''),logs=safeArray(state.gameLogs?.[season]?.[id]),game=target?logs.find(g=>rivalryGameId(g)===target):null;
+      // Require an exact selected-game identity. Public players_points alone
+      // is insufficient to prove that this was a manager's selected game.
+      if(!game){if(target)pending++;return}
+      if(!gameWasPlayed(game))return;
+      const pts=rivalryLeagueFantasyPoints(game,bundle.league.scoring_settings||{});
+      if(!Number.isFinite(pts)){pending++;return}
+      if(!best||pts>best.pts)best={id,pts,owner:String(bundle.ownerByRoster?.[row.roster_id]||''),week:row.week,season,gameId:target};
+    }));
+  });
+  return {best,pending}
+}
+function ensureSelectedRecordAudit(){
+  const key=state.bundles.map(b=>`${b.league?.league_id}:${meaningfulWeeks(b).join(',')}`).join('|');
+  if(state.selectedRecordAuditPromise||state.selectedRecordAuditKey===key)return;
+  state.selectedRecordAuditKey=key;
+  state.selectedRecordAuditPromise=(async()=>{
+    await ensureOlderHistoryLoaded();
+    const jobs=[];
+    state.bundles.forEach(bundle=>{const season=String(bundle.league.season),ids=new Set();selectedRecordRows(bundle).forEach(row=>safeArray(row.starters).forEach(id=>{if(row.starters_games?.[id])ids.add(String(id))}));state.gameLogs[season]??={};ids.forEach(id=>{if(!safeArray(state.gameLogs[season][id]).length)jobs.push({bundle,season,id})})});
+    await limitedMap(jobs,5,async({bundle,season,id})=>{try{const result=await loadPlayerGameLogAverage(id,season,bundle.league.scoring_settings||{});if(result?.rows)state.gameLogs[season][id]=result.rows}catch(error){console.warn('Selected record game log unavailable',id,season,error)}});
+  })().catch(error=>console.warn('Selected record verification unavailable',error)).finally(()=>{state.selectedRecordAuditPromise=null;safeRender('league records',renderRecords)});
+}
+function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const teamEver=highestTeamScore(state.bundles),teamSeason=highestTeamScore([current]),playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const margin=biggestWinningMargin(state.bundles),selectedEver=selectedPlayerRecord(state.bundles),selectedSeason=selectedPlayerRecord([current]);const selectedCard=(label,result)=>[label,result.best?playerName(result.best.id):'—',result.best?`${result.best.pts.toFixed(2)} pts · ${managerName(result.best.owner)} · Week ${result.best.week}, ${result.best.season}${result.pending?' · highest verified so far':''}`:result.pending?(state.selectedRecordAuditPromise?'Verifying selected game scores…':'Selected game data unavailable · Refresh / Retry'):'No verified selections yet','record-gold'];const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['BIGGEST WINNING MARGIN',margin?managerName(margin.owner):'—',margin?`+${margin.margin.toFixed(2)} pts vs ${managerName(margin.opponent)} · ${margin.winnerScore.toFixed(2)}–${margin.loserScore.toFixed(2)} · Week ${margin.week}, ${margin.season}`:'No completed results','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(2)} pts · Week ${teamEver.week}, ${teamEver.season}`:'No data','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(2)} pts · Week ${teamSeason.week}`:'Season not started','record-blue'],['HIGHEST PLAYER SCORE EVER',playerEver?playerName(playerEver.id):'—',playerEver?`${playerEver.pts.toFixed(2)} pts · Week ${playerEver.week}, ${playerEver.season}`:'No data','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE EVER',selectedEver),['HIGHEST PLAYER SCORE THIS SEASON',playerSeason?playerName(playerSeason.id):'—',playerSeason?`${playerSeason.pts.toFixed(2)} pts · Week ${playerSeason.week}`:'Season not started','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE THIS SEASON',selectedSeason)];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("");const lazy=state.lazyHomepageModules.get('leagueRecords');if(lazy?.rendered)ensureSelectedRecordAudit()}
 
 function safeTradeValue(t){try{const value=Number(tradeValue(t));return Number.isFinite(value)?value:0}catch(error){console.warn("Could not calculate trade value",t?.transaction_id||t?.created,error);return 0}}
 function tradeFallbackHTML(raw,label='Trade details'){
@@ -4596,4 +4649,4 @@ document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key)
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
 
-document.getElementById('hubRefreshButton')?.addEventListener('click',async()=>{if(!currentLeagueBundle()){state.jsonRequestCache.clear();await load()}else await refreshHeadToHeadData()});
+document.getElementById('hubRefreshButton')?.addEventListener('click',async()=>{state.selectedRecordAuditKey='';if(!currentLeagueBundle()){state.jsonRequestCache.clear();await load()}else{await refreshHeadToHeadData();safeRender('league records',renderRecords)}});
