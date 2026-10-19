@@ -15,3 +15,5 @@ Limitations: scenario checks use simulated data, not a live NBA game. Odds remai
 V4.0.27 Player Filters: syntax, combined numeric/position filters, blank/zero handling, optional chemistry, missing-stat exclusion, exact form fields, unique IDs, script load order and mocked async search pipeline passed. Six-game recent window correctly labelled. Mobile CSS added; actual browser/device rendering not verified.
 
 V4.0.28: passed pregame zeros, missing feed, missing starters, mismatched totals, exact/estimated 9-v-2 fairness, finite prices, same-week projection preservation and cross-week reset; complete featured render checked with simulated payloads. Toolbar absent. No live browser verification claimed.
+
+V4.0.29: passed screenshot-equivalent simulated search (F, season max 20, recent min 20, age max 31); unrestricted blank bounds; chemistry three-start eligibility; labelled preseason baseline; five current + five prior games; historical season averages; older cached logs do not bypass newer seasons; all-season selector; removal of improvement/chemistry controls; H2H fallback regression and JavaScript syntax. Actual mobile browser rendering not verified.

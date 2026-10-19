@@ -31,7 +31,7 @@ async function getJSON(url,optional=false,fresh=false){
   if(!fresh)state.jsonRequestCache.set(key,request);
   return request;
 }
-async function statsJSON(url){if(state.statsRequestCache.has(url))return state.statsRequestCache.get(url);const request=getJSON(url,true).finally(()=>{});state.statsRequestCache.set(url,request);return request}
+async function statsJSON(url){if(state.statsRequestCache.has(url))return state.statsRequestCache.get(url);const request=getJSON(url,true).then(value=>{if(value==null)state.statsRequestCache.delete(url);return value}).catch(error=>{state.statsRequestCache.delete(url);throw error});state.statsRequestCache.set(url,request);return request}
 async function loadRivalryHistoryArchive(){
   if(state.rivalryHistoryArchive)return state.rivalryHistoryArchive;
   const payload=await getJSON('assets/rivalry-history.json',true);
