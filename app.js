@@ -24,11 +24,11 @@ const $=id=>document.getElementById(id),WL={"14":"14 days","28":"28 days","seaso
 try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key&&key.startsWith('imo-profile-'))sessionStorage.removeItem(key)}}catch(_){ }
 function resetComputedCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerTrades.clear();state.computedCache.tradeSide.clear();state.computedCache.completedMatchups.clear();state.computedCache.tendencyLeague=null;state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
 function resetModelCaches(){state.computedCache.seasonAverages.clear();state.computedCache.managerGrades=null;state.profileHTMLCache.clear()}
-async function getJSON(url,optional=false){
+async function getJSON(url,optional=false,fresh=false){
   const key=String(url);
-  if(state.jsonRequestCache.has(key))return state.jsonRequestCache.get(key);
-  const request=(async()=>{try{const r=await fetch(key,{cache:"default"});if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){state.jsonRequestCache.delete(key);if(optional)return null;throw e}})();
-  state.jsonRequestCache.set(key,request);
+  if(!fresh&&state.jsonRequestCache.has(key))return state.jsonRequestCache.get(key);
+  const request=(async()=>{try{const r=await fetch(key,{cache:fresh?"no-store":"default"});if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){if(!fresh)state.jsonRequestCache.delete(key);if(optional)return null;throw e}})();
+  if(!fresh)state.jsonRequestCache.set(key,request);
   return request;
 }
 async function statsJSON(url){if(state.statsRequestCache.has(url))return state.statsRequestCache.get(url);const request=getJSON(url,true).finally(()=>{});state.statsRequestCache.set(url,request);return request}
@@ -806,7 +806,7 @@ function managerFormBadges(managerId,bundle,beforeWeek){
   if(!games.length&&state.modelBundle&&state.modelBundle!==bundle)games=(outcomesForBundle(state.modelBundle)[String(managerId)]||[]);
   return games.slice(-3).map(g=>g.result===1?'W':g.result===0?'L':'D')
 }
-function rivalryRecord(managerA,managerB){
+function h2hRivalryRecord(managerA,managerB){
   const a=String(managerA),b=String(managerB),record={a:0,b:0,d:0};
   state.bundles.forEach(bundle=>{
     const groups={};(bundle.matchups||[]).filter(row=>Number(row.points)>0&&row.matchup_id!=null).forEach(row=>{const key=`${row.week}|${row.matchup_id}`;(groups[key]??=[]).push(row)});
@@ -819,7 +819,7 @@ function rivalryRecord(managerA,managerB){
   return record
 }
 function rivalryLabel(managerA,managerB){
-  const r=rivalryRecord(managerA,managerB),nameA=managerName(managerA),nameB=managerName(managerB);
+  const r=h2hRivalryRecord(managerA,managerB),nameA=managerName(managerA),nameB=managerName(managerB);
   if(r.a===r.b)return `Series tied ${r.a}–${r.b}${r.d?` · ${r.d} draw${r.d===1?'':'s'}`:''}`;
   const leader=r.a>r.b?nameA:nameB,wins=Math.max(r.a,r.b),losses=Math.min(r.a,r.b);
   return `${leader} leads ${wins}–${losses} all-time${r.d?` · ${r.d} draw${r.d===1?'':'s'}`:''}`
@@ -971,9 +971,9 @@ async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
   try{
     const bundle=currentLeagueBundle();if(!bundle)return;
-    const [league,sportState]=await Promise.all([getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}`,true),getJSON(`${CONFIG.api}/state/nba`,true)]);
+    const [league,sportState]=await Promise.all([getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}`,true,true),getJSON(`${CONFIG.api}/state/nba`,true,true)]);
     if(league){bundle.league=league;state.league=league}if(sportState)state.sportState=sportState;
-    const week=resolveHeadToHeadWeek(bundle),rows=await getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}/matchups/${week}`,true);
+    const week=resolveHeadToHeadWeek(bundle),rows=await getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}/matchups/${week}`,true,true);
     if(Array.isArray(rows)){bundle.matchups=(bundle.matchups||[]).filter(x=>Number(x.week)!==Number(week));bundle.matchups.push(...rows.map(x=>({...x,week})))}
     state.h2hProjectionKey="";await loadH2HProjections(bundle,week);renderHeadToHead()
   }catch(error){console.warn('Head to head live refresh unavailable:',error)}
@@ -4313,6 +4313,7 @@ function ensureOlderHistoryLoaded(){
 }
 function scheduleOlderHistoryLoad(){if(state.historyReady)return;const run=()=>ensureOlderHistoryLoaded().catch(error=>console.warn('Deferred older history unavailable:',error));if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:18000});else setTimeout(run,10000)}
 async function load(){
+  setupHeadToHeadRefresh();
   await loadRivalryHistoryArchive();
   const status=$('statusText');if(status)status.textContent='Connecting…';safeRender('ticker bootstrap',renderTicker);safeRender('verified market bootstrap',renderVerifiedMarketFallback);
   const snapshotPromise=hubCacheRead().catch(()=>null);
