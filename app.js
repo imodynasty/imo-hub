@@ -47,7 +47,7 @@ function archivedMatchupRowsForBundle(bundle){
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v3600-season-rollover',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV1';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v4023-rolling-seasons',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV3-rolling-seasons';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -102,9 +102,23 @@ function activeWindowLabel(w){return WL[w]||w}
 function counts(w){const c=Object.fromEntries([...state.managers.keys()].map(id=>[id,0]));tradesFor(w).forEach(t=>mids(t).forEach(id=>c[id]++));return c}
 function ranked(w){const c=counts(w);return [...state.managers.values()].map(m=>({...m,count:c[m.id]||0})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name))}
 function meaningfulWeeks(bundle){const rows=safeArray(bundle?.matchups);return [...new Set(rows.filter(x=>Number(x?.points)>0).map(x=>Number(x?.week)).filter(Number.isFinite))].sort((a,b)=>a-b)}
-function selectModelBundle(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&meaningfulWeeks(current).length>=2)return current;return state.bundles.filter(b=>meaningfulWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season))[0]||current||state.bundles[0]}
+// Results enter ranking models only after Sleeper advances beyond their week.
+// Keep meaningfulWeeks() unchanged for live H2H and current player statistics.
+function completedRankingWeeks(bundle){
+  const weeks=meaningfulWeeks(bundle);
+  if(String(bundle?.league?.league_id)!==String(CONFIG.currentLeagueId))return weeks;
+  if(String(bundle?.league?.status||'').toLowerCase()==='complete')return weeks;
+  const season=String(bundle?.league?.season||''),sportSeason=String(state.sportState?.season||''),activeWeek=Number(state.sportState?.week)||0;
+  if(!season||sportSeason!==season||activeWeek<1)return [];
+  return weeks.filter(week=>week<activeWeek)
+}
+function rankingMatchupRows(bundle,throughWeek=Infinity){
+  const completed=new Set(completedRankingWeeks(bundle));
+  return matchupRows(bundle,throughWeek).filter(row=>completed.has(Number(row.week)))
+}
+function selectModelBundle(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&completedRankingWeeks(current).length>=2)return current;return state.bundles.filter(b=>completedRankingWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season))[0]||current||state.bundles[0]}
 function matchupRows(bundle,throughWeek=Infinity){return safeArray(bundle?.matchups).filter(x=>Number(x?.week)<=throughWeek&&Number.isFinite(Number(x?.points)))}
-function outcomesForBundle(bundle,throughWeek=Infinity){const rows=matchupRows(bundle,throughWeek),byWeek={};rows.forEach(x=>(byWeek[x.week]??=[]).push(x));const out={};Object.values(byWeek).forEach(weekRows=>{const groups={};weekRows.forEach(x=>{if(x.matchup_id!=null)(groups[x.matchup_id]??=[]).push(x)});Object.values(groups).forEach(g=>{if(g.length<2)return;const scores=g.map(x=>Number(x.points));if(scores.some(x=>!Number.isFinite(x))||scores.every(x=>x===0))return;const max=Math.max(...scores),ties=scores.filter(x=>x===max).length;g.forEach((x,i)=>{const owner=bundle.ownerByRoster[String(x.roster_id)];if(!owner)return;(out[owner]??=[]).push({week:x.week,points:scores[i],result:scores[i]===max?(ties>1?.5:1):0})})})});return out}
+function outcomesForBundle(bundle,throughWeek=Infinity){const rows=rankingMatchupRows(bundle,throughWeek),byWeek={};rows.forEach(x=>(byWeek[x.week]??=[]).push(x));const out={};Object.values(byWeek).forEach(weekRows=>{const groups={};weekRows.forEach(x=>{if(x.matchup_id!=null)(groups[x.matchup_id]??=[]).push(x)});Object.values(groups).forEach(g=>{if(g.length<2)return;const scores=g.map(x=>Number(x.points));if(scores.some(x=>!Number.isFinite(x))||scores.every(x=>x===0))return;const max=Math.max(...scores),ties=scores.filter(x=>x===max).length;g.forEach((x,i)=>{const owner=bundle.ownerByRoster[String(x.roster_id)];if(!owner)return;(out[owner]??=[]).push({week:x.week,points:scores[i],result:scores[i]===max?(ties>1?.5:1):0})})})});return out}
 function minMax(value,values,higher=true){const nums=values.filter(Number.isFinite);if(!nums.length)return .5;const min=Math.min(...nums),max=Math.max(...nums);if(max===min)return .5;const n=(value-min)/(max-min);return higher?n:1-n}
 function bundleOwnerKeyForManager(bundle,managerId){
   const id=String(managerId),rosterId=state.managers.get(id)?.roster?.roster_id,owner=rosterId!=null?bundle?.ownerByRoster?.[String(rosterId)]:null;
@@ -117,14 +131,24 @@ function standingsTable(bundle,throughWeek=Infinity){
     return {...m,sourceId,wins,games:games.length,pts}
   }).sort((a,b)=>b.wins-a.wins||b.pts-a.pts||a.name.localeCompare(b.name)).map((x,i)=>({...x,standingRank:i+1}))
 }
+// Franchise continuity follows roster ownership across seasons, including renamed teams.
+function rollingManagerGames(bundle,managerId,throughWeek=Infinity){
+  const season=Number(bundle?.league?.season),history=state.bundles.filter(b=>Number(b?.league?.season)<season).sort((a,b)=>Number(a.league.season)-Number(b.league.season)),all=[...history,bundle],games=[];
+  all.forEach(b=>{
+    const owner=bundleOwnerKeyForManager(b,managerId),outcomes=outcomesForBundle(b,b===bundle?throughWeek:Infinity),rows=outcomes[owner]||outcomes[String(managerId)]||[];
+    rows.slice().sort((a,b)=>Number(a.week)-Number(b.week)).forEach(row=>games.push({...row,season:String(b.league.season)}));
+  });
+  return games
+}
 function modelRows(bundle,throughWeek=Infinity,mode="power"){
+  if(String(bundle?.league?.league_id)===String(CONFIG.currentLeagueId)&&!completedRankingWeeks(bundle).some(week=>week<=throughWeek))return mode==="odds"?preseasonOddsScoreRows(bundle):preseasonProjectionRows(bundle);
   // In-season Power Rankings (independent from Championship Odds):
   // 25% last-five scoring average, 25% current team value,
   // 25% current ladder position, 25% last-three scoring average.
   if(mode==="odds")return liveChampionshipScoreRows(bundle,throughWeek);
   const standings=standingsTable(bundle,throughWeek),outcomes=outcomesForBundle(bundle,throughWeek),teamCount=Math.max(standings.length,1),rosterRows=currentRosterProjectionProfiles(bundle),rosterBy=Object.fromEntries(rosterRows.map(x=>[String(x.id),x]));
   const raw=standings.map(team=>{
-    const games=outcomes[team.sourceId]||outcomes[team.id]||[],last3=games.slice(-3),last5=games.slice(-5),avg3=last3.length?last3.reduce((s,g)=>s+g.points,0)/last3.length:0,avg5=last5.length?last5.reduce((s,g)=>s+g.points,0)/last5.length:0,ladder=teamCount===1?1:1-(team.standingRank-1)/(teamCount-1),streak=winningStreak(games),teamValue=Number(rosterBy[String(team.id)]?.rosterStrength??.5);
+    const games=rollingManagerGames(bundle,team.id,throughWeek),last3=games.slice(-3),last5=games.slice(-5),avg3=last3.length?last3.reduce((s,g)=>s+g.points,0)/last3.length:0,avg5=last5.length?last5.reduce((s,g)=>s+g.points,0)/last5.length:0,ladder=teamCount===1?1:1-(team.standingRank-1)/(teamCount-1),streak=winningStreak(games),teamValue=Number(rosterBy[String(team.id)]?.rosterStrength??.5);
     return {...team,avg3,avg5,ladder,streak,teamValue,recentGames:last3.length,lastFiveGames:last5.length}
   });
   const avg5s=raw.map(x=>x.avg5),avg3s=raw.map(x=>x.avg3);
@@ -145,7 +169,7 @@ function buildPlayerAverages(bundle,throughWeek=Infinity){
   const totals=seasonTotalAverageMap(season);
   return {...calculated,...exact,...totals};
 }
-function prepareModels(){state.modelBundle=selectModelBundle();const weeks=meaningfulWeeks(state.modelBundle),last=weeks.at(-1)||Infinity,prior=weeks.length>1?weeks.at(-2):last;state.previousPowerRanks=Object.fromEntries(modelRows(state.modelBundle,prior,"power").map(x=>[x.id,x.rank]));state.playerAverages=buildPlayerAverages(state.modelBundle,last)}
+function prepareModels(){state.modelBundle=selectModelBundle();const weeks=completedRankingWeeks(state.modelBundle),last=weeks.at(-1)||Infinity,prior=weeks.length>1?weeks.at(-2):last;state.previousPowerRanks=Object.fromEntries(modelRows(state.modelBundle,prior,"power").map(x=>[x.id,x.rank]));state.playerAverages=buildPlayerAverages(state.modelBundle,last)}
 function playerName(id){const p=state.players[id]||{};return p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" ")||`Player ${id}`}
 function refreshResolvedPlayerNames(){
   // Lightweight DOM repair for content that was rendered before Sleeper's full
@@ -469,7 +493,7 @@ function renderLeaderboard(){const r=activeRanked(state.activeWindow),max=Math.m
 function leagueLuckRatings(bundle=state.modelBundle,throughWeek=Infinity){
   const ratings=Object.fromEntries([...state.managers.keys()].map(id=>[String(id),0]));
   if(!bundle)return ratings;
-  const rows=matchupRows(bundle,throughWeek),byWeek={};
+  const rows=rankingMatchupRows(bundle,throughWeek),byWeek={};
   rows.forEach(row=>(byWeek[row.week]??=[]).push(row));
   Object.values(byWeek).forEach(weekRows=>{
     const groups={};
@@ -503,7 +527,7 @@ function leagueLuckRatings(bundle=state.modelBundle,throughWeek=Infinity){
 }
 function managerLuckRating(managerId,bundle=state.modelBundle,throughWeek=Infinity){return Number(leagueLuckRatings(bundle,throughWeek)[String(managerId)]||0)}
 function recentThreePointAverage(managerId,bundle=state.modelBundle,throughWeek=Infinity){const games=(outcomesForBundle(bundle,throughWeek)[String(managerId)]||[]).slice(-3);return games.length?games.reduce((s,g)=>s+g.points,0)/games.length:0}
-function activeTrendBundle(){const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId);if(current&&meaningfulWeeks(current).length)return current;return state.bundles.filter(b=>meaningfulWeeks(b).length).sort((a,b)=>Number(b.league?.season)-Number(a.league?.season))[0]||state.modelBundle}
+function activeTrendBundle(){const current=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId);if(current&&completedRankingWeeks(current).length)return current;return state.bundles.filter(b=>completedRankingWeeks(b).length).sort((a,b)=>Number(b.league?.season)-Number(a.league?.season))[0]||state.modelBundle}
 function previousCompletedBundle(bundle){
   const season=Number(bundle?.league?.season||0);
   return state.bundles.filter(b=>Number(b.league?.season||0)<season&&meaningfulWeeks(b).length).sort((a,b)=>Number(b.league?.season||0)-Number(a.league?.season||0))[0]||null
@@ -596,7 +620,7 @@ function liveChampionshipScoreRows(bundle,throughWeek=Infinity){
   // 30% current team value, 20% current ladder, 10% last-three scoring average.
   const standings=standingsTable(bundle,throughWeek),outcomes=outcomesForBundle(bundle,throughWeek),rosterRows=currentRosterProjectionProfiles(bundle),teamCount=Math.max(1,standings.length),rosterBy=Object.fromEntries(rosterRows.map(x=>[String(x.id),x]));
   const raw=standings.map(team=>{
-    const games=outcomes[team.sourceId]||outcomes[team.id]||[],last5=games.slice(-5),last3=games.slice(-3),avg5=last5.length?last5.reduce((s,g)=>s+g.points,0)/last5.length:0,avg3=last3.length?last3.reduce((s,g)=>s+g.points,0)/last3.length:0,ladder=teamCount===1?1:1-(team.standingRank-1)/(teamCount-1),teamValue=Number(rosterBy[String(team.id)]?.rosterStrength??.5);
+    const games=rollingManagerGames(bundle,team.id,throughWeek),last5=games.slice(-5),last3=games.slice(-3),avg5=last5.length?last5.reduce((s,g)=>s+g.points,0)/last5.length:0,avg3=last3.length?last3.reduce((s,g)=>s+g.points,0)/last3.length:0,ladder=teamCount===1?1:1-(team.standingRank-1)/(teamCount-1),teamValue=Number(rosterBy[String(team.id)]?.rosterStrength??.5);
     return {...team,gamesList:games,avg5,avg3,ladder,teamValue}
   }),avg5s=raw.map(x=>x.avg5),avg3s=raw.map(x=>x.avg3);
   return raw.map(team=>{
@@ -605,15 +629,15 @@ function liveChampionshipScoreRows(bundle,throughWeek=Infinity){
   }).sort((a,b)=>b.score-a.score||b.avg5-a.avg5||a.name.localeCompare(b.name)).map((x,i)=>({...x,rank:i+1}))
 }
 function currentSeasonLuckContext(){
-  const current=currentLeagueBundle(),weeks=meaningfulWeeks(current),through=weeks.at(-1)||Infinity;
+  const current=currentLeagueBundle(),weeks=completedRankingWeeks(current),through=weeks.at(-1)||Infinity;
   return {bundle:current,weeks,through,ratings:weeks.length?leagueLuckRatings(current,through):{}};
 }
 function powerRowsForDisplay(){
-  const current=currentLeagueBundle(),weeks=meaningfulWeeks(current),through=weeks.at(-1)||Infinity;
+  const current=currentLeagueBundle(),weeks=completedRankingWeeks(current),through=weeks.at(-1)||Infinity;
   return {bundle:current,weeks,through,rows:weeks.length?modelRows(current,through,"power"):preseasonProjectionRows(current),isOffseason:weeks.length===0};
 }
 function priceRowsForBundle(bundle,through){
-  const isCurrent=String(bundle.league?.league_id)===CONFIG.currentLeagueId,weeks=meaningfulWeeks(bundle),weekCount=weeks.filter(w=>through===Infinity||w<=through).length;
+  const isCurrent=String(bundle.league?.league_id)===CONFIG.currentLeagueId,weeks=completedRankingWeeks(bundle),weekCount=weeks.filter(w=>through===Infinity||w<=through).length;
   let rows;
   if(isCurrent&&weekCount===0)rows=preseasonOddsScoreRows(bundle);
   else if(isCurrent&&weekCount<4){
@@ -624,16 +648,16 @@ function priceRowsForBundle(bundle,through){
   return rows.map((x,i)=>{const fair=strengths[i]/sum,market=Math.min(.99,fair*CONFIG.bookmakerMargin),odds=roundFive(Math.min(CONFIG.maxDisplayedOdds,Math.max(1.01,1/market)));return {...x,odds,probability:fair,eliminated:false}})
 }
 function championshipOddsLabel(row){return row?.eliminated?'0%':row?.odds!=null?`$${Number(row.odds).toFixed(2)}`:'—'}
-function managerPowerTrend(managerId){const bundle=activeTrendBundle(),weeks=meaningfulWeeks(bundle),outcomes=outcomesForBundle(bundle);return weeks.map(week=>{const row=modelRows(bundle,week,"power").find(x=>String(x.id)===String(managerId)),odds=priceRowsForBundle(bundle,week).find(x=>String(x.id)===String(managerId)),games=(outcomes[String(managerId)]||[]).filter(g=>g.week<=week),weekGame=games.find(g=>g.week===week),wins=games.reduce((sum,g)=>sum+g.result,0);return row?{week,rank:row.rank,odds:odds?.odds??null,oddsLabel:odds?championshipOddsLabel(odds):'Unavailable',wins,games:games.length,score:weekGame?.points??null,season:String(bundle.league?.season||'')}:null}).filter(Boolean)}
-function powerTrendHTML(managerId){const rows=managerPowerTrend(managerId);if(!rows.length)return '<div class="profile-empty">Power-ranking history will appear once the season begins.</div>';const width=760,height=210,padX=42,padY=24,maxRank=Math.max(state.managers.size,...rows.map(x=>x.rank)),x=i=>rows.length===1?width/2:padX+i*(width-padX*2)/(rows.length-1),y=rank=>padY+(rank-1)*(height-padY*2)/Math.max(1,maxRank-1),points=rows.map((r,i)=>`${x(i).toFixed(1)},${y(r.rank).toFixed(1)}`).join(' '),dots=rows.map((r,i)=>`<circle class="spark-point" tabindex="0" cx="${x(i)}" cy="${y(r.rank)}" r="6" data-week="${r.week}" data-rank="${r.rank}" data-record="${r.wins}-${r.games-r.wins}" data-score="${r.score==null?'Unavailable':Number(r.score).toFixed(1)}" data-odds="${r.oddsLabel||'Unavailable'}"></circle>`).join(''),labels=rows.map((r,i)=>`<text x="${x(i)}" y="${height-5}" text-anchor="middle">W${r.week}</text>`).join(''),last=rows.at(-1),currentBundle=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId),isCurrent=currentBundle&&String(currentBundle.league?.season)===last.season&&meaningfulWeeks(currentBundle).length>0,endLabel=isCurrent?'Current':'Finished',movement=rows[0].rank-last.rank;return `<div class="profile-sparkline-wrap" data-season="${esc(last.season)}"><div class="sparkline-season-label">${esc(last.season)} POWER RANKING JOURNEY</div><div class="sparkline-chart"><svg class="profile-sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="Week-on-week power ranking"><line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height-padY}"/><line x1="${padX}" y1="${height-padY}" x2="${width-padX}" y2="${height-padY}"/><text x="8" y="${padY+5}">#1</text><text x="8" y="${height-padY+5}">#${maxRank}</text><polyline points="${points}"/>${dots}${labels}</svg><div class="sparkline-tooltip" aria-hidden="true"></div></div><div class="profile-sparkline-summary"><span>Started: #${rows[0].rank}</span><strong>${movement>0?'▲ '+movement:movement<0?'▼ '+Math.abs(movement):'—'} </strong><span>${endLabel}: #${last.rank}</span></div></div>`}
+function managerPowerTrend(managerId){const bundle=activeTrendBundle(),weeks=completedRankingWeeks(bundle),outcomes=outcomesForBundle(bundle);return weeks.map(week=>{const row=modelRows(bundle,week,"power").find(x=>String(x.id)===String(managerId)),odds=priceRowsForBundle(bundle,week).find(x=>String(x.id)===String(managerId)),games=(outcomes[String(managerId)]||[]).filter(g=>g.week<=week),weekGame=games.find(g=>g.week===week),wins=games.reduce((sum,g)=>sum+g.result,0);return row?{week,rank:row.rank,odds:odds?.odds??null,oddsLabel:odds?championshipOddsLabel(odds):'Unavailable',wins,games:games.length,score:weekGame?.points??null,season:String(bundle.league?.season||'')}:null}).filter(Boolean)}
+function powerTrendHTML(managerId){const rows=managerPowerTrend(managerId);if(!rows.length)return '<div class="profile-empty">Power-ranking history will appear once the season begins.</div>';const width=760,height=210,padX=42,padY=24,maxRank=Math.max(state.managers.size,...rows.map(x=>x.rank)),x=i=>rows.length===1?width/2:padX+i*(width-padX*2)/(rows.length-1),y=rank=>padY+(rank-1)*(height-padY*2)/Math.max(1,maxRank-1),points=rows.map((r,i)=>`${x(i).toFixed(1)},${y(r.rank).toFixed(1)}`).join(' '),dots=rows.map((r,i)=>`<circle class="spark-point" tabindex="0" cx="${x(i)}" cy="${y(r.rank)}" r="6" data-week="${r.week}" data-rank="${r.rank}" data-record="${r.wins}-${r.games-r.wins}" data-score="${r.score==null?'Unavailable':Number(r.score).toFixed(1)}" data-odds="${r.oddsLabel||'Unavailable'}"></circle>`).join(''),labels=rows.map((r,i)=>`<text x="${x(i)}" y="${height-5}" text-anchor="middle">W${r.week}</text>`).join(''),last=rows.at(-1),currentBundle=state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId),isCurrent=currentBundle&&String(currentBundle.league?.season)===last.season&&completedRankingWeeks(currentBundle).length>0,endLabel=isCurrent?'Current':'Finished',movement=rows[0].rank-last.rank;return `<div class="profile-sparkline-wrap" data-season="${esc(last.season)}"><div class="sparkline-season-label">${esc(last.season)} POWER RANKING JOURNEY</div><div class="sparkline-chart"><svg class="profile-sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="Week-on-week power ranking"><line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height-padY}"/><line x1="${padX}" y1="${height-padY}" x2="${width-padX}" y2="${height-padY}"/><text x="8" y="${padY+5}">#1</text><text x="8" y="${height-padY+5}">#${maxRank}</text><polyline points="${points}"/>${dots}${labels}</svg><div class="sparkline-tooltip" aria-hidden="true"></div></div><div class="profile-sparkline-summary"><span>Started: #${rows[0].rank}</span><strong>${movement>0?'▲ '+movement:movement<0?'▼ '+Math.abs(movement):'—'} </strong><span>${endLabel}: #${last.rank}</span></div></div>`}
 function bindSparklineTooltips(root=document){root.querySelectorAll('.sparkline-chart').forEach(chart=>{const tip=chart.querySelector('.sparkline-tooltip');chart.querySelectorAll('.spark-point').forEach(point=>{const show=()=>{tip.innerHTML=`<strong>Week ${esc(point.dataset.week)}</strong><span>Power Rank <b>#${esc(point.dataset.rank)}</b></span><span>Record <b>${esc(point.dataset.record)}</b></span><span>Weekly Score <b>${esc(point.dataset.score)}</b></span><span>Championship Odds <b>${esc(point.dataset.odds)}</b></span>`;const svg=chart.querySelector('svg'),box=svg.getBoundingClientRect(),cx=Number(point.getAttribute('cx'))/760*box.width,cy=Number(point.getAttribute('cy'))/210*box.height;tip.style.left=`${Math.max(8,Math.min(box.width-170,cx-75))}px`;tip.style.top=`${Math.max(8,cy-128)}px`;tip.classList.add('show');tip.setAttribute('aria-hidden','false')},hide=()=>{tip.classList.remove('show');tip.setAttribute('aria-hidden','true')};point.addEventListener('mouseenter',show);point.addEventListener('focus',show);point.addEventListener('mouseleave',hide);point.addEventListener('blur',hide);point.addEventListener('click',e=>{e.stopPropagation();show()})});chart.addEventListener('click',e=>{if(!e.target.classList.contains('spark-point'))tip.classList.remove('show')})})}
 function latestCurrentLeagueTrade(){return state.trades.find(t=>String(t.league_id)===String(CONFIG.currentLeagueId))||state.trades[0]||null}
-function oddsSnapshotRows(){const weeks=meaningfulWeeks(state.modelBundle),through=weeks.at(-1)||Infinity;return priceRows(through)}
+function oddsSnapshotRows(){const weeks=completedRankingWeeks(state.modelBundle),through=weeks.at(-1)||Infinity;return priceRows(through)}
 function readStoredJSON(key){try{return JSON.parse(localStorage.getItem(key)||"null")}catch{return null}}
 function prepareOddsMovement(){
   if(!verifiedMarketInputsReady())return;
   const rows=oddsSnapshotRows(),currentOdds=Object.fromEntries(rows.map(row=>[String(row.id),Number(row.odds)])),existing=readStoredJSON("imoOddsMovementV4")||{changes:{}},previous=readStoredJSON("imoOddsSnapshotV4"),changes={...(existing?.changes||{})};
-  const weeks=meaningfulWeeks(state.modelBundle),priorWeek=weeks.length>1?weeks.at(-2):null,priorWeekOdds=priorWeek==null?{}:Object.fromEntries(priceRows(priorWeek).map(row=>[String(row.id),Number(row.odds)]));
+  const weeks=completedRankingWeeks(state.modelBundle),priorWeek=weeks.length>1?weeks.at(-2):null,priorWeekOdds=priorWeek==null?{}:Object.fromEntries(priceRows(priorWeek).map(row=>[String(row.id),Number(row.odds)]));
   Object.entries(currentOdds).forEach(([id,current])=>{
     const previousRaw=previous?.odds?.[id],snapshotOdds=Number(previousRaw&&typeof previousRaw==='object'?previousRaw.odds:previousRaw),stored=changes[id],storedNew=Number(stored?.newOdds),weekOdds=Number(priorWeekOdds[id]);
     if(Number.isFinite(snapshotOdds)&&Math.abs(current-snapshotOdds)>=.001)changes[id]={oldOdds:snapshotOdds,newOdds:current,changedAt:Date.now()};
@@ -674,12 +698,12 @@ function renderPower(){
 }
 function pooperbowlRows(){
   const current=currentLeagueBundle();if(!current)return[];
-  const currentWeeks=meaningfulWeeks(current),inSeason=currentWeeks.length>0,through=inSeason?currentWeeks.at(-1):Infinity,ladderBundle=inSeason?current:previousCompletedBundle(current);
+  const currentWeeks=completedRankingWeeks(current),inSeason=currentWeeks.length>0,through=inSeason?currentWeeks.at(-1):Infinity,ladderBundle=inSeason?current:previousCompletedBundle(current);
   if(!ladderBundle)return[];
   const ladderThrough=inSeason?through:Infinity,ladder=standingsTable(ladderBundle,ladderThrough),teamCount=Math.max(1,ladder.length),ladderBy=Object.fromEntries(ladder.map(x=>[String(x.id),x]));
   const currentStandings=inSeason?standingsTable(current,through):[],currentBy=Object.fromEntries(currentStandings.map(x=>[String(x.id),x]));
   const pointsSource=inSeason?currentBy:ladderBy,pfValues=[...state.managers.keys()].map(id=>Number(pointsSource[String(id)]?.pts||0));
-  const currentOutcomes=inSeason?outcomesForBundle(current,through):{},recentValues=[...state.managers.keys()].map(id=>{const sourceId=currentBy[String(id)]?.sourceId||String(id),games=currentOutcomes[sourceId]||currentOutcomes[String(id)]||[],last3=games.slice(-3);return last3.length?last3.reduce((sum,g)=>sum+Number(g.points||0),0)/last3.length:0});
+  const currentOutcomes=inSeason?outcomesForBundle(current,through):{},recentValues=[...state.managers.keys()].map(id=>{const sourceId=currentBy[String(id)]?.sourceId||String(id),games=rollingManagerGames(current,id,through),last3=games.slice(-3);return last3.length?last3.reduce((sum,g)=>sum+Number(g.points||0),0)/last3.length:0});
   const powerDisplay=powerRowsForDisplay(),powerBy=Object.fromEntries(powerDisplay.rows.map(x=>[String(x.id),x])),powerCount=Math.max(1,powerDisplay.rows.length);
   const hasPF=pfValues.some(v=>v>0),hasRecent=inSeason&&recentValues.some(v=>v>0);
   const rows=[...state.managers.values()].map((m,index)=>{
@@ -693,7 +717,7 @@ function pooperbowlRows(){
   return rows.map(row=>{const fair=Math.max(.0001,row.riskScore)/total,market=Math.min(.99,fair*CONFIG.bookmakerMargin),odds=roundFive(Math.min(CONFIG.maxDisplayedOdds,Math.max(1.01,1/market)));return{...row,probability:fair,odds}}).sort((a,b)=>a.odds-b.odds||b.riskScore-a.riskScore||a.name.localeCompare(b.name)).map((row,index)=>({...row,riskRank:index+1,inSeason,ladderSeason:String(ladderBundle?.league?.season||'')}))
 }
 function pooperbowlProjectedMatchup(){
-  const current=currentLeagueBundle();if(!current)return[];const weeks=meaningfulWeeks(current),bundle=weeks.length?current:previousCompletedBundle(current);if(!bundle)return[];const through=weeks.length?weeks.at(-1):Infinity;
+  const current=currentLeagueBundle();if(!current)return[];const weeks=completedRankingWeeks(current),bundle=weeks.length?current:previousCompletedBundle(current);if(!bundle)return[];const through=weeks.length?weeks.at(-1):Infinity;
   return standingsTable(bundle,through).slice(-2).reverse()
 }
 function renderPooperbowlWatch(){
@@ -939,14 +963,15 @@ function sleeperTeamProjection(row,bundle,week){
 function buildHeadToHeadMatchup(group,bundle,week,mode){
   const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||'');
   const currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0,preA=managerPreGameProjection(idA,bundle,week),preB=managerPreGameProjection(idB,bundle,week),finishA=mode==='live'?liveWeightedProjection(currentA,preA):preA,finishB=mode==='live'?liveWeightedProjection(currentB,preB):preB,odds=matchupOdds(finishA,finishB),difference=Math.abs(finishA-finishB),line=Math.floor(difference)+.5,favouriteA=finishA>=finishB;
-  return{rowA,rowB,idA,idB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA,bundle,week),sleeperProjectionB:sleeperTeamProjection(rowB,bundle,week),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
+  return{rowA,rowB,idA,idB,currentA,currentB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA,bundle,week),sleeperProjectionB:sleeperTeamProjection(rowB,bundle,week),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTION</small><b>${value.toFixed(1)}</b></span>`:''}
-function h2hFeaturedTeamHTML(managerId,odds,form,side,projection){
-  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button><strong>$${odds.toFixed(2)}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>CURRENT SCORE</small><b>${score.toFixed(1)}</b></span>`:''}
+function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
+  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${odds.toFixed(2)}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
-function h2hCompactTeamHTML(managerId,odds,form,projection){
-  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong><em>$${odds.toFixed(2)}</em>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+function h2hCompactTeamHTML(managerId,odds,form,projection,score=null){
+  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong>${h2hScoreHTML(score)}<em>$${odds.toFixed(2)}</em>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
 function renderHeadToHead(){
   const target=$("headToHead");if(!target)return;
@@ -961,11 +986,11 @@ function renderHeadToHead(){
   target.classList.remove('loading');
   target.innerHTML=`<article class="h2h-featured-card ${mode}">
       <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MARKET':'MATCHUP OF THE WEEK'}</span><small>Week ${week}</small></div>
-      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB)}</div>
+      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,mode==='live'?featured.currentA:null)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,mode==='live'?featured.currentB:null)}</div>
       ${h2hMatchupDetailsHTML(featured,mode)}
     </article>
-    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details class="h2h-compact-matchup ${mode}"><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
+    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details class="h2h-compact-matchup ${mode}"><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
+    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Current score is the published weekly total; projection is separate and is not adjusted for players remaining. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
@@ -2321,7 +2346,7 @@ function ensureManagerGradeStyles(){
 }
 
 function managerPowerMovement(managerId){
-  const weeks=meaningfulWeeks(state.modelBundle);if(weeks.length<2)return{move:0,previous:null};
+  const weeks=completedRankingWeeks(state.modelBundle);if(weeks.length<2)return{move:0,previous:null};
   const currentWeek=weeks.at(-1),previousWeek=weeks.at(-2),current=modelRows(state.modelBundle,currentWeek,'power').find(x=>String(x.id)===String(managerId)),previous=modelRows(state.modelBundle,previousWeek,'power').find(x=>String(x.id)===String(managerId));
   return{move:current&&previous?Number(previous.rank)-Number(current.rank):0,previous:previous?.rank||null}
 }
@@ -3457,7 +3482,7 @@ function weeklyMockProspects(){
 function currentLeagueBundle(){return state.bundles.find(b=>String(b.league?.league_id)===String(CONFIG.currentLeagueId))||state.modelBundle||state.bundles[0]}
 function projected2027DraftSlots(){
   const bundle=currentLeagueBundle();if(!bundle)return[];
-  const weeks=meaningfulWeeks(bundle),through=weeks.at(-1)||Infinity;
+  const weeks=completedRankingWeeks(bundle),through=weeks.at(-1)||Infinity;
   const worstToBest=[...priceRowsForBundle(bundle,through)].sort((a,b)=>Number(b.odds)-Number(a.odds)||Number(a.rank)-Number(b.rank));
   return worstToBest.map((row,index)=>{const manager=state.managers.get(String(row.id)),rosterId=String(manager?.roster?.roster_id||'');return{slot:index+1,originalRosterId:rosterId,originalManagerId:String(row.id)}}).filter(x=>x.originalRosterId);
 }
