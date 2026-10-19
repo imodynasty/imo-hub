@@ -3389,7 +3389,6 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
 .h2h-compact-matchup.live .h2h-compact-team>.h2h-sleeper-projection{grid-row:3}
 .h2h-compact-matchup.live .h2h-compact-team>.h2h-form-badges{grid-row:4}
 
-.hub-refresh-controls{display:flex;gap:12px;align-items:center;justify-content:flex-end;padding:10px 20px;color:#8b949e;font-size:12px}.hub-refresh-controls button{background:#21262d;color:#f0f6fc;border:1px solid #30363d;border-radius:7px;padding:7px 12px;cursor:pointer}
 
 .h2h-remaining-summary{font-size:12px;line-height:1.8;padding:10px 0;color:#b9c7d8}
 

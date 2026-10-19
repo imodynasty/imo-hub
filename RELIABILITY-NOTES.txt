@@ -13,3 +13,5 @@ PASS: featured and compact score markup, pregame score hiding, H2H precedes trad
 Limitations: scenario checks use simulated data, not a live NBA game. Odds remain an IMO price derived from projected finishes, not a calibrated statistical win probability. Zero placeholders cannot prove whether a slot has played; prices pause when that distinction is unavailable. Browser/mobile layout and actual API payload compatibility require live verification.
 
 V4.0.27 Player Filters: syntax, combined numeric/position filters, blank/zero handling, optional chemistry, missing-stat exclusion, exact form fields, unique IDs, script load order and mocked async search pipeline passed. Six-game recent window correctly labelled. Mobile CSS added; actual browser/device rendering not verified.
+
+V4.0.28: passed pregame zeros, missing feed, missing starters, mismatched totals, exact/estimated 9-v-2 fairness, finite prices, same-week projection preservation and cross-week reset; complete featured render checked with simulated payloads. Toolbar absent. No live browser verification claimed.
