@@ -27,7 +27,7 @@ function resetModelCaches(){state.computedCache.seasonAverages.clear();state.com
 async function getJSON(url,optional=false,fresh=false){
   const key=String(url);
   if(!fresh&&state.jsonRequestCache.has(key))return state.jsonRequestCache.get(key);
-  const request=(async()=>{try{const r=await fetch(key,{cache:fresh?"no-store":"default"});if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){if(!fresh)state.jsonRequestCache.delete(key);if(optional)return null;throw e}})();
+  const request=(async()=>{const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const r=await fetch(key,{cache:fresh?"no-store":"default",signal:controller.signal});if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){if(!fresh)state.jsonRequestCache.delete(key);if(optional)return null;throw e}finally{clearTimeout(timer)}})();
   if(!fresh)state.jsonRequestCache.set(key,request);
   return request;
 }
@@ -47,7 +47,7 @@ function archivedMatchupRowsForBundle(bundle){
 // IndexedDB keeps the last complete league snapshot on-device. Repeat visits can
 // paint real manager, player and trade data immediately while Sleeper refreshes
 // quietly in the background. Failure is intentionally silent.
-const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v4023-rolling-seasons',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV3-rolling-seasons';
+const HUB_CACHE_DB='imo-dynasty-cache-v1',HUB_CACHE_STORE='snapshots',HUB_CACHE_KEY='hub-v4023-rolling-seasons',VERIFIED_MARKET_CACHE_KEY='imoVerifiedPowerMarketV4-reliability';
 function openHubCache(){return new Promise(resolve=>{if(!('indexedDB' in window)){resolve(null);return}let request;try{request=indexedDB.open(HUB_CACHE_DB,1)}catch(_){resolve(null);return}request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(HUB_CACHE_STORE))db.createObjectStore(HUB_CACHE_STORE)};request.onsuccess=()=>resolve(request.result);request.onerror=()=>resolve(null)})}
 async function hubCacheRead(){const db=await openHubCache();if(!db)return null;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readonly'),req=tx.objectStore(HUB_CACHE_STORE).get(HUB_CACHE_KEY);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);tx.oncomplete=()=>db.close()}catch(_){db.close();resolve(null)}})}
 async function hubCacheWrite(snapshot){const db=await openHubCache();if(!db)return;return new Promise(resolve=>{try{const tx=db.transaction(HUB_CACHE_STORE,'readwrite');tx.objectStore(HUB_CACHE_STORE).put(snapshot,HUB_CACHE_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();resolve()}}catch(_){db.close();resolve()}})}
@@ -779,7 +779,6 @@ function renderWaivedBlock(){
   target.classList.remove("loading");
   target.innerHTML=rows.length?rows.map(([id,n],i)=>`<div class="rank-item waiver-rank-item"><b>${i+1}</b><div><strong>${playerLink(id,playerName(id))}</strong><div class="meta">${n===1?'Waived once':`Waived ${n} times`} across loaded league history</div></div><span class="power-score">${n}x</span></div>`).join(""):'<div class="block-empty">No completed waiver drops found.</div>'
 }
-function currentLeagueBundle(){return state.bundles.find(b=>String(b.league?.league_id)===CONFIG.currentLeagueId)||state.bundles[0]||null}
 function groupedMatchupsForWeek(bundle,week){
   const groups={};
   (bundle?.matchups||[]).filter(row=>Number(row.week)===Number(week)&&row.matchup_id!=null).forEach(row=>(groups[String(row.matchup_id)]??=[]).push(row));
@@ -888,6 +887,7 @@ function h2hOutPlayers(managerId){
   return managerRosterPlayers(managerId,season).filter(x=>Number(x.avg)>0).slice(0,5).filter(x=>sleeperListsPlayerOut(x.id)).map(x=>({id:String(x.id),name:x.name,avg:Number(x.avg)||0}))
 }
 function h2hNarrative(data){
+  if(data.oddsAvailable===false)return "Live scores are available. Odds are paused until starter scores and remaining-player projections can be reconciled with both team totals.";
   const {idA,idB,keyA,keyB,odds,injuriesA,injuriesB,formA,formB}=data,nameA=managerName(idA),nameB=managerName(idB),gap=Math.abs(odds.a-odds.b),aFav=odds.a<=odds.b,fav=aFav?nameA:nameB,dog=aFav?nameB:nameA,favOdds=aFav?odds.a:odds.b;
   const isCentre=p=>Array.isArray(p?.positions)&&p.positions.some(pos=>/^(c|center)$/i.test(String(pos).trim()));
   const bothBigs=isCentre(keyA)&&isCentre(keyB),bothGuards=[keyA,keyB].every(p=>Array.isArray(p?.positions)&&p.positions.some(pos=>/^(pg|sg|g|guard)$/i.test(String(pos).trim())));
@@ -905,8 +905,9 @@ function h2hNarrative(data){
   return `${first} ${second}`
 }
 function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true){
+  if(data.oddsAvailable===false)return `<div class="h2h-preview"><span>ODDS TEMPORARILY UNAVAILABLE</span><p>${esc(h2hNarrative(data))}</p></div>`;
   const {idA,idB,keyA,keyB,formA,formB,injuriesA,injuriesB,line,favouriteA}=data;
-  return `<div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hNarrative(data))}</p></div>
+  return `<div class="h2h-remaining-summary">${esc(managerName(idA))}: ${data.liveA?.counted??0}/${data.liveA?.starters??0} scored · +${Number(data.liveA?.remainingProjection||0).toFixed(1)} projected remaining<br>${esc(managerName(idB))}: ${data.liveB?.counted??0}/${data.liveB?.starters??0} scored · +${Number(data.liveB?.remainingProjection||0).toFixed(1)} projected remaining</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hNarrative(data))}</p></div>
     <div class="h2h-detail-grid">
       <div class="h2h-line"><span>Market line</span><strong>${esc(managerName(favouriteA?idA:idB))} −${line.toFixed(1)} <small>·</small> ${esc(managerName(favouriteA?idB:idA))} +${line.toFixed(1)}</strong></div>
       <div class="h2h-rivalry"><span>Rivalry record</span><strong>${esc(rivalryLabel(idA,idB))}</strong></div>
@@ -948,7 +949,7 @@ async function loadH2HProjections(bundle,week){
   try{
     const urls=[`https://api.sleeper.com/projections/nba/regular/${encodeURIComponent(season)}/${encodeURIComponent(week)}`,`https://api.sleeper.app/v1/projections/nba/regular/${encodeURIComponent(season)}/${encodeURIComponent(week)}`];
     let payload=null;
-    for(const url of urls){try{const r=await fetch(url,{cache:"no-store"});if(r.ok){payload=await r.json();if(payload)break}}catch(_){}}
+    for(const url of urls){try{const r=await fetch(url,{cache:"no-store",signal:AbortSignal.timeout(12000)});if(r.ok){payload=await r.json();if(payload)break}}catch(_){}}
     state.h2hProjections=normalizeSleeperProjectionPayload(payload);state.h2hProjectionKey=key;
   }catch(error){console.warn("Sleeper NBA projections unavailable:",error);state.h2hProjections={};state.h2hProjectionKey=key}
   finally{state.h2hProjectionLoading=false}
@@ -960,18 +961,36 @@ function sleeperTeamProjection(row,bundle,week){
   const values=playerIds.map(id=>projectionFantasyPoints(projections[id],scoring)).filter(Number.isFinite);
   return values.length?values.reduce((a,b)=>a+b,0):null
 }
-function buildHeadToHeadMatchup(group,bundle,week,mode){
-  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||'');
-  const currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0,preA=managerPreGameProjection(idA,bundle,week),preB=managerPreGameProjection(idB,bundle,week),finishA=mode==='live'?liveWeightedProjection(currentA,preA):preA,finishB=mode==='live'?liveWeightedProjection(currentB,preB):preB,odds=matchupOdds(finishA,finishB),difference=Math.abs(finishA-finishB),line=Math.floor(difference)+.5,favouriteA=finishA>=finishB;
-  return{rowA,rowB,idA,idB,currentA,currentB,finishA,finishB,sleeperProjectionA:sleeperTeamProjection(rowA,bundle,week),sleeperProjectionB:sleeperTeamProjection(rowB,bundle,week),odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
+function h2hRemainingProjection(row,bundle){
+  const starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),total=Number(row?.points),details=[];
+  if(!starters.length||!Number.isFinite(total))return {available:false,reason:'Starter scores unavailable'};
+  let scored=0,remaining=0,counted=0,uncertain=false;
+  starters.forEach((id,index)=>{
+    const raw=Array.isArray(row.starters_points)?row.starters_points[index]:row.players_points?.[id],has=raw!==null&&raw!==undefined&&raw!==''&&Number.isFinite(Number(raw)),value=has?Number(raw):null;
+    // A zero can mean either an unplayed slot or an actual zero-point game.
+    // Do not manufacture an exact remaining-player count from that ambiguity.
+    if(has&&value===0){uncertain=true;details.push({id,status:'unknown'});return}
+    if(has){scored+=value;counted++;details.push({id,status:'scored',points:value});return}
+    const feed=state.h2hProjections?.[id],projection=projectionFantasyPoints(feed?.stats||feed,bundle?.league?.scoring_settings||{}),fallback=Number(seasonAverageMap(String(bundle?.league?.season))?.[id]||latestKnownAverage(id)||0),expected=Number.isFinite(projection)?projection:fallback>0?fallback:null;
+    if(expected===null){uncertain=true;details.push({id,status:'missing-projection'});return}
+    remaining+=expected;details.push({id,status:'remaining',projection:expected,source:Number.isFinite(projection)?'Sleeper':'season average'});
+  });
+  const reconciled=Math.abs(scored-total)<.11;
+  return {available:!uncertain&&reconciled,total:total+remaining,current:total,remainingProjection:remaining,counted,remaining:starters.length-counted,starters:starters.length,details,reason:uncertain?'Waiting for unambiguous starter scores or projections':!reconciled?'Starter scores do not yet match the team total':''}
 }
-function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTION</small><b>${value.toFixed(1)}</b></span>`:''}
+function buildHeadToHeadMatchup(group,bundle,week,mode){
+  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0;
+  const liveA=h2hRemainingProjection(rowA,bundle),liveB=h2hRemainingProjection(rowB,bundle),available=liveA.available&&liveB.available;
+  const finishA=liveA.total??currentA,finishB=liveB.total??currentB,odds=available?matchupOdds(finishA,finishB):{a:null,b:null},difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
+  return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
+}
+function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTED FINISH</small><b>${value.toFixed(1)}</b></span>`:''}
 function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>CURRENT SCORE</small><b>${score.toFixed(1)}</b></span>`:''}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
-  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${odds.toFixed(2)}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
 function h2hCompactTeamHTML(managerId,odds,form,projection,score=null){
-  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong>${h2hScoreHTML(score)}<em>$${odds.toFixed(2)}</em>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong>${h2hScoreHTML(score)}<em>$${Number.isFinite(odds)?odds.toFixed(2):'—'}</em>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
 function renderHeadToHead(){
   const target=$("headToHead");if(!target)return;
@@ -981,27 +1000,39 @@ function renderHeadToHead(){
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
   const anyScore=groups.some(group=>group.some(row=>Number(row.points)>0)),mode=anyScore?'live':'upcoming';
   const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Live`:`Week ${week} · Upcoming`;status.classList.toggle('live',mode==='live')}
-  const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Math.abs(a.odds.a-a.odds.b)-Math.abs(b.odds.a-b.odds.b));
+  const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
   const featured=matchups[0],others=matchups.slice(1);
   target.classList.remove('loading');
+  const expanded=[...target.querySelectorAll('details[open]')].map(x=>x.dataset.matchupId);
   target.innerHTML=`<article class="h2h-featured-card ${mode}">
-      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MARKET':'MATCHUP OF THE WEEK'}</span><small>Week ${week}</small></div>
+      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
       <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,mode==='live'?featured.currentA:null)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,mode==='live'?featured.currentB:null)}</div>
       ${h2hMatchupDetailsHTML(featured,mode)}
     </article>
-    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details class="h2h-compact-matchup ${mode}"><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Current score is the published weekly total; projection is separate and is not adjusted for players remaining. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
+    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
+    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projected finish equals current score plus projections for unscored starters. Season averages fill missing projections. Odds pause if starter scores cannot be verified; zero-point placeholders are not assumed to be completed games. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
   try{
     const bundle=currentLeagueBundle();if(!bundle)return;
-    const [league,sportState]=await Promise.all([getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}`,true,true),getJSON(`${CONFIG.api}/state/nba`,true,true)]);
+    const oldWeek=state.h2hProcessedWeek??resolveHeadToHeadWeek(bundle);state.h2hProcessedWeek=oldWeek;
+    const [league,sportState,rosters]=await Promise.all([getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}`,true,true),getJSON(`${CONFIG.api}/state/nba`,true,true),getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}/rosters`,true,true)]);
     if(league){bundle.league=league;state.league=league}if(sportState)state.sportState=sportState;
     const week=resolveHeadToHeadWeek(bundle),rows=await getJSON(`${CONFIG.api}/league/${CONFIG.currentLeagueId}/matchups/${week}`,true,true);
     if(Array.isArray(rows)){bundle.matchups=(bundle.matchups||[]).filter(x=>Number(x.week)!==Number(week));bundle.matchups.push(...rows.map(x=>({...x,week})))}
-    state.h2hProjectionKey="";await loadH2HProjections(bundle,week);renderHeadToHead()
-  }catch(error){console.warn('Head to head live refresh unavailable:',error)}
+    if(!Array.isArray(rows))throw new Error('Live matchup refresh unavailable');
+    if(Array.isArray(rosters)){bundle.rosters=rosters;state.currentRosters=rosters;rosters.forEach(r=>{const m=state.managers.get(String(r.owner_id));if(m)m.roster=r})}
+    if(oldWeek!==week){state.jsonRequestCache.clear();state.statsRequestCache.clear();const fresh=await loadSeason(CONFIG.currentLeagueId);if(fresh){state.bundles=state.bundles.map(b=>String(b.league?.league_id)===String(CONFIG.currentLeagueId)?fresh:b);rebuildStateFromBundles()}}
+    if(Date.now()-Number(state.lastLiveMetricsAt||0)>300000){
+      const season=String(bundle.league?.season||'');
+      for(const key of state.jsonRequestCache.keys())if(key.includes('/stats/nba/')&&(key.includes(`/stats/nba/${season}?`)||key.includes(`season=${season}`)))state.jsonRequestCache.delete(key);
+      for(const key of state.statsRequestCache.keys())if(key.includes(`/stats/nba/${season}?`)||key.includes(`season=${season}`))state.statsRequestCache.delete(key);
+      await loadSeasonTotalAverages([season]);delete state.gameLogAverages[season];delete state.gameLogMeta[season];delete state.gameLogs[season];state.lastLiveMetricsAt=Date.now();
+    }
+    resetComputedCaches();prepareModels();state.h2hProjectionKey="";await loadH2HProjections(currentLeagueBundle(),week);renderHeadToHead();renderForChange('market');state.dataRevision=(state.dataRevision||0)+1;state.h2hProcessedWeek=week;refreshOpenProfileData();
+    const updated=$('hubRefreshStatus');if(updated)updated.textContent=`Updated ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+  }catch(error){console.warn('Head to head live refresh unavailable:',error);const updated=$('hubRefreshStatus');if(updated)updated.textContent='Refresh unavailable · showing last data · Retry'}
   finally{state.h2hRefreshBusy=false}
 }
 function setupHeadToHeadRefresh(){
@@ -3045,7 +3076,7 @@ function closeManagerDirectory(){const modal=$("managerDirectoryModal");if(!moda
 function managerProfileCacheKey(managerId){return `${String(managerId)}|${String(state.profileAverageSeason||"")}`}
 function managerProfileCoreFingerprint(managerId){
   const id=String(managerId||''),manager=state.managers.get(id),roster=safeArray(manager?.roster?.players).map(String).sort().join(','),picks=safeArray(manager?.roster?.draft_picks||[]).map(String).sort().join(',');
-  return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}`
+  return `${CONFIG.currentLeagueId}|${id}|${roster}|${picks}|${state.dataRevision||0}|${String(state.sportState?.week||0)}|${JSON.stringify(Object.entries(state.seasonTotalAverages||{}).map(([season,map])=>[season,safeArray(manager?.roster?.players).map(pid=>[pid,map[pid],state.seasonTotalMeta?.[season]?.[pid]?.gamesPlayed])]))}|${JSON.stringify(safeArray(currentLeagueBundle()?.matchups).filter(row=>String(row.roster_id)===String(manager?.roster?.roster_id)))}`
 }
 function managerProfileSessionKey(key){return `imo-profile-v352-session|${key}`}
 function managerProfilePersistentKey(key){return `imo-profile-v352-persistent|${key}`}
@@ -3055,7 +3086,7 @@ function readManagerProfileTabCache(managerId,tab){
   try{
     const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;
     const entry=JSON.parse(raw),expected=managerProfileCoreFingerprint(managerId);
-    if(!entry?.html||entry.fingerprint!==expected)return null;
+    if(!entry?.html||Date.now()-Number(entry.savedAt||0)>60000||entry.fingerprint!==expected)return null;
     return entry.html
   }catch(_){return null}
 }
@@ -3087,7 +3118,7 @@ function readManagerProfileCachedHTML(key,managerId=null){
   for(const storage of [sessionStorage,localStorage]){
     try{
       const storageKey=storage===sessionStorage?managerProfileSessionKey(key):managerProfilePersistentKey(key),entry=parseManagerProfileCache(storage.getItem(storageKey));
-      if(!entry?.html)continue;
+      if(!entry?.html||Date.now()-Number(entry.savedAt||0)>60000)continue;
       // If the current roster has changed, do not reuse an old profile. Otherwise
       // allow the last known profile to paint immediately, even before history has loaded.
       if(expected&&entry.fingerprint&&entry.fingerprint!==expected)continue;
@@ -3216,6 +3247,12 @@ async function openManagerProfile(managerId,pushState=true){
   requestAnimationFrame(()=>$('managerProfileClose')?.focus())
 }
 
+function refreshOpenProfileData(){
+  const modal=$('managerProfileModal'),content=$('managerProfileContent');
+  if(modal?.classList.contains('open')&&modal.dataset.managerId&&content){const id=modal.dataset.managerId,tab=modal.dataset.activeTab||'overview';clearManagerProfileCachedHTML(id);content.innerHTML=cachedManagerProfileHTML(id);setManagerProfileTab(tab,false)}
+  const player=$('playerHistoryModal'),playerContent=$('playerHistoryContent');
+  if(player?.classList.contains('open')&&player.dataset.playerId&&playerContent)playerContent.innerHTML=playerHistoryHTML(player.dataset.playerId);
+}
 function upgradeOpenManagerProfile(){const modal=$('managerProfileModal');if(!modal?.classList.contains('open')||!modal.dataset.pendingFullProfile||!modal.dataset.managerId)return;delete modal.dataset.pendingFullProfile;if(modal.dataset.cachedProfileShown){delete modal.dataset.cachedProfileShown;return}/* Core shell remains intentionally lightweight until a deeper tab is requested. */}
 function closeManagerProfile(updateHistory=true){
   const modal=$("managerProfileModal");
@@ -3620,7 +3657,7 @@ function downloadNineteenZeroFile(file){const url=URL.createObjectURL(file),a=do
 async function downloadNineteenZeroShareCard(button){if(!nineteenZeroSession?.complete)return;button.disabled=true;button.textContent='Preparing PNG…';try{downloadNineteenZeroFile(await nineteenZeroShareFile());button.textContent='PNG downloaded'}catch(error){console.error(error);button.textContent='Try PNG export again'}finally{button.disabled=false}}
 async function shareNineteenZeroResult(button){if(!nineteenZeroSession?.complete)return;button.disabled=true;button.textContent='Preparing…';try{const file=await nineteenZeroShareFile(),result=nineteenZeroResult(nineteenZeroSession.picks),shareData={title:'IMO Dynasty 19–0 Challenge',text:`I built a ${result.record} ${result.title} in IMO Dynasty.`,files:[file]};if(navigator.share&&navigator.canShare?.(shareData)){await navigator.share(shareData);button.textContent='Shared'}else{downloadNineteenZeroFile(file);button.textContent='PNG downloaded'}}catch(error){if(error?.name!=='AbortError'){console.error(error);button.textContent='Try again'}}finally{button.disabled=false;setTimeout(()=>{if(button.isConnected)button.textContent='Share Result'},1600)}}
 
-function safeRender(name,fn){try{fn()}catch(error){console.error(`Failed to render ${name}:`,error)}}
+function safeRender(name,fn){try{fn()}catch(error){console.error(`Failed to render ${name}:`,error);const ids={'head to head':'headToHead','power rankings':'powerRankings','player form':'goodForm','recent trades':'recentTrades','pooperbowl watch':'pooperbowlWatchBody'},target=$(ids[name]);if(target){target.classList.remove('loading');target.innerHTML='<div class="block-empty">Data temporarily unavailable. Use Refresh / Retry above.</div>'}}}
 function yieldToBrowser(){return new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)))}
 function powerMarketPill(){return $("powerRankings")?.closest(".panel")?.querySelector(".period-pill")||null}
 function markPowerMarketState(mode){
@@ -4407,7 +4444,7 @@ async function load(){
         if(status)status.textContent=state.marketReady?`Live · verified rankings · ${averageCount} exact averages`:`Live · market verification unavailable`;
         const remainingSeasons=state.bundles.map(b=>String(b?.league?.season||"")).filter(season=>season&&!Object.keys(state.seasonTotalAverages?.[season]||{}).length);
         if(remainingSeasons.length){
-          const finishTotals=()=>loadSeasonTotalAverages(remainingSeasons).then(()=>{resetModelCaches();prepareModels();state.globalSearchIndex=null;scheduleHubCacheWrite()}).catch(error=>console.warn('Deferred season totals unavailable:',error));
+          const finishTotals=()=>loadSeasonTotalAverages(remainingSeasons).then(()=>{resetModelCaches();prepareModels();state.globalSearchIndex=null;renderForChange('market');refreshOpenProfileData();scheduleHubCacheWrite()}).catch(error=>console.warn('Deferred season totals unavailable:',error));
           if('requestIdleCallback' in window)requestIdleCallback(finishTotals,{timeout:12000});else setTimeout(finishTotals,7000);
         }
       }catch(error){console.warn('Exact Sleeper season averages unavailable:',error);safeRender('market fallback',renderVerifiedMarketFallback)}
@@ -4558,3 +4595,5 @@ document.addEventListener("focusin",e=>{const link=e.target.closest?.(".manager-
 document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key).toLowerCase()==="k"){e.preventDefault();openGlobalSearch();return}if(e.key!=="Escape")return;if($("nineteenZeroModal")?.classList.contains("open"))closeNineteenZero();else if($("rivalriesModal")?.classList.contains("open"))closeRivalries();else if($("globalSearchModal")?.classList.contains("open"))closeGlobalSearch();else if($("pickHistoryModal")?.classList.contains("open"))closePickHistory();else if($("tradeReturnTreeModal")?.classList.contains("open"))closeTradeReturnTree();else if($("managerPicksMadeModal")?.classList.contains("open"))closeManagerPicksMade();else if($("mockDraftModal")?.classList.contains("open"))closeMockDraft();else if($("archetypeGuideModal")?.classList.contains("open"))closeArchetypeGuide();else if(document.getElementById('mobileManagerSwitcherSheet'))closeMobileManagerSwitcher();else if(document.getElementById('mobileProfileInfoSheet')?.classList.contains('open'))closeMobileProfileInfo();else if(document.querySelector('[data-manager-switcher].open'))closeManagerSwitchers();else if($("headlinesModal")?.classList.contains("open"))closeHeadlines();else if($("playerHistoryModal")?.classList.contains("open"))closePlayerHistory();else if($("managerProfileModal")?.classList.contains("open"))closeManagerProfile();else if($("managerDirectoryModal")?.classList.contains("open"))closeManagerDirectory()});
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
+
+document.getElementById('hubRefreshButton')?.addEventListener('click',async()=>{if(!currentLeagueBundle()){state.jsonRequestCache.clear();await load()}else await refreshHeadToHeadData()});

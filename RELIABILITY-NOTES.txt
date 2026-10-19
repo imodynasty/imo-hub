@@ -1,0 +1,13 @@
+V4.0.24 verification
+PASS: JavaScript syntax
+PASS: duplicate rivalry helper regression
+PASS: 60-second polling, visibility refresh, hidden-tab pause, uncached live requests
+PASS: 9 starters scored / 280 + 1 projected 30 = 310; 2 scored / 70 + 8 projected 30 = 310
+PASS: pregame and fully scored arithmetic, negative points, bench exclusion
+PASS: odds withheld for mismatched starter totals, ambiguous zero values and missing projections
+PASS: completed-week-only power/odds/Pooperbowl/trends; active partial-score invariance
+PASS: midweek roster strength still affects models
+PASS: cross-season last-five / last-three windows, changed owner IDs, history phases out after five weeks
+PASS: first-week preseason, season/week mismatch and completed-league cases
+PASS: featured and compact score markup, pregame score hiding, H2H precedes trade section
+Limitations: scenario checks use simulated data, not a live NBA game. Odds remain an IMO price derived from projected finishes, not a calibrated statistical win probability. Zero placeholders cannot prove whether a slot has played; prices pause when that distinction is unavailable. Browser/mobile layout and actual API payload compatibility require live verification.
