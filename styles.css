@@ -3413,3 +3413,52 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
 .player-filters .pf-pair input::placeholder{font-size:12px;color:#788494}.player-filters input[type=number]{appearance:textfield;-moz-appearance:textfield}
 .player-filters input::-webkit-inner-spin-button,.player-filters input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 @media(max-width:600px){.player-filters .pf-grid{gap:13px}.player-filters form>p{font-size:11px;margin:8px 0 12px}.player-filters .pf-actions button{font-size:13px}.player-filters .pf-result-heading label{max-width:150px}}
+/* V4.0.30 — mobile H2H uses two independent vertical team stacks.
+   This deliberately replaces the older avatar-spanning grid on small screens. */
+@media(max-width:700px){
+  .head-to-head-panel,.head-to-head-board,.h2h-featured-card{min-width:0;max-width:100%;box-sizing:border-box}
+  .head-to-head-panel .h2h-featured-market{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr);gap:8px;align-items:start;margin:16px 0 12px!important}
+  .head-to-head-panel .h2h-featured-team,
+  .head-to-head-panel .h2h-featured-team.right{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;min-width:0;width:100%;text-align:center}
+  .head-to-head-panel .h2h-featured-team>*{min-width:0;max-width:100%;box-sizing:border-box;float:none}
+  .head-to-head-panel .h2h-featured-team>.h2h-featured-avatar{order:0;flex:none;width:48px;height:48px;margin:0;border-radius:13px}
+  .head-to-head-panel .h2h-featured-team>button{order:1;display:block;width:100%;min-height:2.8em;margin:0;font-size:12px;line-height:1.35;font-weight:850;text-align:center;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+  .head-to-head-panel .h2h-featured-team>.h2h-current-score{order:2;align-items:center;text-align:center;gap:3px;margin:0}
+  .head-to-head-panel .h2h-featured-team .h2h-current-score small{font-size:8px;letter-spacing:.06em}
+  .head-to-head-panel .h2h-featured-team .h2h-current-score b{font-size:clamp(29px,8vw,38px);line-height:1.1}
+  .head-to-head-panel .h2h-featured-team>.h2h-matchup-odds{order:3;display:block;margin:0;font-size:clamp(24px,7vw,32px)!important;line-height:1.1;letter-spacing:-.035em;white-space:nowrap}
+  .head-to-head-panel .h2h-featured-card.live .h2h-featured-team>.h2h-matchup-odds{font-size:21px!important}
+  .head-to-head-panel .h2h-featured-team>.h2h-sleeper-projection{order:4;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;max-width:100%;min-width:0;min-height:38px;margin:0!important;padding:6px 3px;border-radius:7px;box-sizing:border-box;text-align:center}
+  .head-to-head-panel .h2h-featured-team>.h2h-sleeper-projection small{font-size:6.5px;line-height:1.2;letter-spacing:.045em;white-space:normal;overflow-wrap:anywhere}
+  .head-to-head-panel .h2h-featured-team>.h2h-sleeper-projection b{font-size:14px;line-height:1.1}
+  .head-to-head-panel .h2h-featured-team>.h2h-form-badges{order:5;display:flex;align-items:center;justify-content:center;margin:0;gap:4px}
+  .head-to-head-panel .h2h-market-centre{align-self:start;margin-top:88px;width:22px;min-width:0}
+  .head-to-head-panel .h2h-market-centre span{font-size:10px}
+  .head-to-head-panel .h2h-card-kicker{display:flex;gap:10px;justify-content:space-between;align-items:flex-start!important}
+  .head-to-head-panel .h2h-card-kicker>span{min-width:0;font-size:18px!important;line-height:1.2}
+  .head-to-head-panel .h2h-card-kicker>small{flex:none;font-size:9px!important;line-height:1.5;white-space:nowrap}
+  .head-to-head-panel .h2h-remaining-summary{font-size:10px;line-height:1.6;overflow-wrap:anywhere;padding:8px 0 12px}
+  .head-to-head-panel .h2h-preview p{font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+  .head-to-head-panel .h2h-detail-grid{grid-template-columns:minmax(0,1fr);gap:8px}
+  .head-to-head-panel .h2h-line,.head-to-head-panel .h2h-rivalry{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;padding:10px 12px!important;text-align:left}
+  .head-to-head-panel .h2h-line strong,.head-to-head-panel .h2h-rivalry strong{width:100%;min-width:0;font-size:11px!important;line-height:1.5!important;white-space:normal;overflow-wrap:anywhere;text-align:left}
+  .head-to-head-panel .h2h-key-heading{display:flex;flex-wrap:wrap;gap:5px}
+  .head-to-head-panel .h2h-key-heading small{font-size:8px}
+  .head-to-head-panel .h2h-main-event{grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr)}
+  .head-to-head-panel .h2h-main-event-player{min-width:0;padding:8px 4px!important}
+  .head-to-head-panel .h2h-main-event .h2h-key-player{display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0;gap:6px}
+  .head-to-head-panel .h2h-main-event .h2h-key-player-link{max-width:100%;font-size:11px;line-height:1.3;white-space:normal;overflow-wrap:anywhere;text-align:center}
+  .head-to-head-panel .h2h-main-event .h2h-key-avatar{width:44px;height:44px;flex:none}
+  .head-to-head-panel .h2h-main-event-vs{width:28px;height:28px;font-size:10px}
+  .head-to-head-panel .h2h-compact-pair{grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+  .head-to-head-panel .h2h-compact-matchup>summary{grid-template-columns:minmax(0,1fr) 18px;gap:8px;padding:12px 10px}
+  .head-to-head-panel .h2h-compact-team{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:5px 8px;min-width:0;align-items:center}
+  .head-to-head-panel .h2h-compact-team>strong{grid-column:2;grid-row:1;min-width:0;font-size:11px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}
+  .head-to-head-panel .h2h-compact-team>em{grid-column:3;grid-row:1;font-size:20px;white-space:nowrap;line-height:1.1}
+  .head-to-head-panel .h2h-compact-matchup.live .h2h-compact-team>em{grid-row:2;font-size:16px}
+  .head-to-head-panel .h2h-compact-team>.h2h-current-score{grid-column:2;grid-row:2;align-items:flex-start}
+  .head-to-head-panel .h2h-compact-team>.h2h-sleeper-projection{grid-column:2/4;grid-row:3;justify-self:start;display:flex!important;flex-wrap:wrap;gap:5px;width:auto;max-width:100%;margin:0!important;box-sizing:border-box}
+  .head-to-head-panel .h2h-compact-team>.h2h-sleeper-projection small{white-space:normal;font-size:7px}
+  .head-to-head-panel .h2h-compact-team>.h2h-sleeper-projection b{font-size:12px}
+  .head-to-head-panel .h2h-compact-team>.h2h-form-badges{grid-column:2/4;grid-row:4}
+}
