@@ -910,7 +910,7 @@ function h2hLockedPreview(data,bundle,week){
 }
 function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true,bundle=null,week=null){
   const {idA,idB,keyA,keyB,formA,formB,injuriesA,injuriesB,line,favouriteA}=data;
-  const progress=(id,row)=>`${esc(managerName(id))}: ${Number.isFinite(row.current)?`${row.manual?'Manual Sleeper':'Inferred completed-game'} ${row.current.toFixed(2)}`:'completed-game data pending'} · projection estimated`;
+  const progress=(id,row)=>`${esc(managerName(id))}: ${Number.isFinite(row.current)?`Selected-game total ${row.current.toFixed(2)}`:'selected-game data pending'} · projection estimated`;
   return `<div class="h2h-remaining-summary">${progress(idA,data.liveA)}<br>${progress(idB,data.liveB)}</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hLockedPreview(data,bundle,week))}</p></div>
     <div class="h2h-detail-grid">
       <div class="h2h-line"><span>Market line</span><strong>${esc(managerName(favouriteA?idA:idB))} −${line.toFixed(1)} <small>·</small> ${esc(managerName(favouriteA?idB:idA))} +${line.toFixed(1)}</strong></div>
@@ -1009,20 +1009,118 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
   const total=mode==='live'?liveWeightedProjection(current,pregame):Math.max(current,pregame);
   return {available:true,estimated:true,method:'team projection fallback',total:Number.isFinite(total)?total:Math.max(current,220),current,remainingProjection:null,counted:null,starters:starters.length,remaining:null}
 }
-// Game Pick Mode: Sleeper's public matchup feed does NOT expose the private
-// matchup_legs / selected-game live scoreboard. Public row.points is NOT the
-// score in the Sleeper mobile app. Allow a clearly labelled, week-scoped
-// correction until an authenticated shared feed is available.
-function h2hOverrideKey(bundle,week){return `imo-official-scores-v1:${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}`}
-function h2hManualScores(bundle,week){
-  try{const v=JSON.parse(localStorage.getItem(h2hOverrideKey(bundle,week))||'{}');return v&&typeof v==='object'?v:{}}catch(_){return {}}
-}
-// Completed-game-only experiment. This is inferred, NOT an authenticated pick ledger.
-// Do not silently count in-progress or ambiguous game rows as verified selections.
+// V4.0.38: Exact selection-ledger scoring. Only the authenticated, read-only
+// matchup_legs JSON supplies the selected game. Never infer a selection from
+// weekly or season totals. The import is local to this browser, with no tokens.
 const h2hCompletedGameCache=new Map();
 let h2hCompletedGameBusy=false;
+function h2hLedgerKey(bundle,week){return `imo-selected-games-v1:${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}`}
+function h2hSelectionLedger(bundle,week){
+  try{
+    const raw=localStorage.getItem(h2hLedgerKey(bundle,week));
+    const data=raw?JSON.parse(raw):null;
+    return data&&Array.isArray(data.rows)?data:null;
+  }catch(_){return null}
+}
+function h2hValidateSelectionImport(payload,bundle,week){
+  // Accept GraphQL response object, matchup_legs array, or our own export.
+  const rows=Array.isArray(payload)?payload:(payload?.data?.matchup_legs||payload?.matchup_legs||payload?.rows);
+  if(!Array.isArray(rows)||rows.length===0)throw new Error('No matchup_legs array was found in this JSON.');
+  const valid=rows.map(row=>{
+    const id=Number(row.roster_id);
+    const starters=safeArray(row.starters).map(String);
+    const games=row.starters_games;
+    if(!Number.isInteger(id)||!starters.length||!games||typeof games!=='object'||Array.isArray(games))throw new Error('Invalid roster, starters or starters_games in selection file.');
+    const mapped={};
+    for(const pid of starters){if(games[pid]!=null&&String(games[pid]).trim())mapped[pid]=String(games[pid]).trim()}
+    return {roster_id:id,matchup_id:row.matchup_id,starters,starters_games:mapped};
+  });
+  const expected=new Set(safeArray(bundle?.rosters).map(r=>Number(r.roster_id)));
+  if(expected.size&&valid.some(r=>!expected.has(r.roster_id)))throw new Error('This file contains rosters not in the current league. Check the league and week.');
+  if(new Set(valid.map(r=>r.roster_id)).size!==valid.length)throw new Error('Duplicate roster IDs in selection file.');
+  return {league_id:String(bundle?.league?.league_id||CONFIG.currentLeagueId),week:Number(week),rows:valid,importedAt:Date.now()};
+}
+async function h2hImportSelectionFile(file){
+  const bundle=currentLeagueBundle(),week=resolveHeadToHeadWeek(bundle);
+  if(!bundle||!file)return;
+  try{
+    if(file.size>2000000)throw new Error('Selection JSON exceeds 2 MB.');
+    const ledger=h2hValidateSelectionImport(JSON.parse(await file.text()),bundle,week);
+    localStorage.setItem(h2hLedgerKey(bundle,week),JSON.stringify(ledger));
+    h2hCompletedGameCache.clear();
+    renderHeadToHead();
+    await h2hRefreshCompletedGames(bundle,week);
+    alert(`Imported ${ledger.rows.length} rosters and ${ledger.rows.reduce((n,r)=>n+Object.keys(r.starters_games).length,0)} selected-game IDs for Week ${week}.`);
+  }catch(error){alert('Could not import Sleeper selections: '+error.message)}
+}
+document.addEventListener('change',event=>{
+  if(event.target?.id==='h2h-selection-upload'){
+    const file=event.target.files?.[0];event.target.value='';if(file)h2hImportSelectionFile(file);
+  }
+});
+function h2hAutoScore(row,bundle,week){
+  const key=`${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}:${row?.roster_id}`;
+  return h2hCompletedGameCache.get(key)||null;
+}
+function h2hActualScore(row,bundle,week){
+  const ledger=h2hSelectionLedger(bundle,week);
+  if(!ledger||!ledger.rows.some(r=>Number(r.roster_id)===Number(row?.roster_id)))return null;
+  const record=h2hAutoScore(row,bundle,week);
+  return record&&record.checked?record.score:null;
+}
+async function h2hRefreshCompletedGames(bundle,week){
+  if(!bundle||h2hCompletedGameBusy)return;
+  const ledger=h2hSelectionLedger(bundle,week);
+  if(!ledger)return;
+  const season=String(bundle.league?.season||'2026'),scoring=bundle.league?.scoring_settings||{};
+  const lookup=new Map(ledger.rows.map(r=>[Number(r.roster_id),r]));
+  const rows=groupedMatchupsForWeek(bundle,week).flat().filter(row=>lookup.has(Number(row.roster_id)));
+  h2hCompletedGameBusy=true;
+  try{
+    const ids=[...new Set(rows.flatMap(row=>{
+      const record=lookup.get(Number(row.roster_id));
+      return safeArray(record?.starters).filter(pid=>record?.starters_games?.[pid]).map(String)
+    }))];
+    const logs=new Map();
+    await limitedMap(ids,5,async pid=>{
+      try{
+        // Reuse the same game logs as Chemistry and player profiles.
+        const url=`${CONFIG.statsApi}/${encodeURIComponent(pid)}?season_type=regular&season=${encodeURIComponent(season)}&grouping=week`;
+        state.statsRequestCache.delete(url);state.jsonRequestCache.delete(url);
+        const result=await loadPlayerGameLogAverage(pid,season,scoring);
+        if(result?.rows){logs.set(pid,result.rows);state.gameLogs[season]??={};state.gameLogs[season][pid]=result.rows}
+      }catch(error){console.warn('Selected-game stats unavailable',pid,error)}
+    });
+    for(const row of rows){
+      const selected=lookup.get(Number(row.roster_id));
+      let score=0,confirmed=0,pending=0,missing=0,unmapped=0,dateInferred=0;
+      const playerBreakdown=[];
+      for(const pid of selected.starters){
+        const gameId=selected.starters_games?.[pid];
+        if(!gameId){unmapped++;continue}
+        const game=safeArray(logs.get(String(pid))).find(g=>rivalryGameId(g)===String(gameId));
+        if(!game){missing++;continue}
+        if(!gameWasPlayed(game)){pending++;continue}
+        const completion=h2hGameCompletion(game);
+        if(completion!=='final'&&completion!=='date-inferred'){pending++;continue}
+        const pts=rivalryLeagueFantasyPoints(game,scoring);
+        if(!Number.isFinite(pts)){missing++;continue}
+        score+=pts;confirmed++;if(completion==='date-inferred')dateInferred++;
+        playerBreakdown.push({id:String(pid),gameId,points:pts,completion});
+      }
+      const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
+      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,checked:true,confirmed,pending,missing,unmapped,dateInferred,playerBreakdown,updated:Date.now()});
+    }
+    renderHeadToHead();
+  }finally{h2hCompletedGameBusy=false}
+}
+function h2hOfficialScoresEditor(bundle,week,groups){
+  const ledger=h2hSelectionLedger(bundle,week),rows=groups.flat(),records=rows.map(r=>h2hAutoScore(r,bundle,week)).filter(Boolean);
+  const count=ledger?.rows.reduce((n,r)=>n+Object.keys(r.starters_games||{}).length,0)||0;
+  const totals=records.reduce((a,r)=>{for(const k of ['confirmed','pending','missing','unmapped','dateInferred'])a[k]+=r[k]||0;return a},{confirmed:0,pending:0,missing:0,unmapped:0,dateInferred:0});
+  return `<div class="h2h-manual-toolbar"><span>${ledger?`SELECTED-GAME LEDGER · ${ledger.rows.length} rosters / ${count} picks · ${totals.confirmed} scored (${totals.dateInferred} date-inferred) · ${totals.pending} pending · ${totals.missing} no matching game ID · ${totals.unmapped} unselected`:'SELECTED-GAME LEDGER · Import the authenticated Sleeper matchup_legs JSON to enable exact selected-game scoring. No live points or unselected games will be counted.'}</span><label class="h2h-ledger-upload" for="h2h-selection-upload">${ledger?'Replace':'Import'} selected games <input id="h2h-selection-upload" type="file" accept=".json,application/json" style="display:none"></label></div>`;
+}
 function h2hGameCompletion(game){
-  // A game-log row with a true final status is the strongest available signal.
   const status=String(game?.game_status??game?.status??game?.gameStatus??game?.status_text??'').toLowerCase();
   if(/\b(final|finished|complete|completed|closed)\b/.test(status))return 'final';
   if(/\b(live|progress|halftime|quarter|q[1-4]|scheduled|pregame|postponed|cancelled)\b/.test(status))return 'pending';
@@ -1031,90 +1129,11 @@ function h2hGameCompletion(game){
   const raw=game?.start_time??game?.startTime??game?.game_time??game?.date??game?.game_date??game?.gameDate;
   if(!raw)return 'unknown';
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){
-    // Sleeper's game-only logs frequently omit an explicit final flag or time.
-    // A game dated prior to today (UTC) is a *date-inferred* completion, not
-    // authoritative; retain that distinction in the diagnostics/UI.
     const day=new Date(String(raw)+'T00:00:00Z');
-    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>=24*3600000?'date-inferred':'pending';
+    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>=36*3600000?'date-inferred':'pending';
   }
   const d=chemistryGameDateValue({date:raw});
-  // No status: a precise tipoff older than five hours is still only inferred.
-  return d&&Date.now()-d.getTime()>=5*3600000?'date-inferred':'pending';
-}
-function h2hGameIsFinal(game){return ['final','date-inferred'].includes(h2hGameCompletion(game))}
-
-function h2hMatchFinalGame(playerId,reported,rows,week,scoring,season){
-  if(!Number.isFinite(reported)||reported<=0)return {game:null,reason:'no-reported-points'};
-  const all=safeArray(rows);
-  if(!all.length)return {game:null,reason:'no-game-logs'};
-  // Sleeper game-log buckets aren't guaranteed to put fantasy_week on each
-  // underlying game: use the same inferred calendar as Team Chemistry.
-  const anchor=chemistrySeasonAnchor(season);
-  const weekly=all.filter(game=>Number(chemistryWeekForGame(game,season,anchor))===Number(week));
-  if(!weekly.length)return {game:null,reason:'week-not-matched'};
-  const finished=weekly.filter(game=>gameWasPlayed(game)&&h2hGameIsFinal(game));
-  if(!finished.length)return {game:null,reason:'none-final'};
-  const exact=finished.filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
-  if(exact.length===1)return {game:exact[0],reason:h2hGameCompletion(exact[0])==='final'?'verified-match':'date-inferred-match'};
-  if(exact.length>1)return {game:null,reason:'multiple-score-matches'};
-  // A lone completed game only provides an inference, not a proven selection.
-  // Do not invent a final score from a mismatch.
-  return {game:null,reason:finished.length===1?'score-mismatch':'no-score-match'};
-}
-function h2hAutoScore(row,bundle,week){
-  const key=`${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}:${row?.roster_id}`;
-  const cached=h2hCompletedGameCache.get(key);
-  return cached||null;
-}
-function h2hActualScore(row,bundle,week){
-  const inferred=h2hAutoScore(row,bundle,week);
-  return inferred&&inferred.confirmed>0?inferred.score:null;
-}
-async function h2hRefreshCompletedGames(bundle,week){
-  if(!bundle||h2hCompletedGameBusy)return;
-  const season=String(bundle.league?.season||'2026'),scoring=bundle.league?.scoring_settings||{},groups=groupedMatchupsForWeek(bundle,week),rows=groups.flat();
-  if(!rows.length)return;
-  h2hCompletedGameBusy=true;
-  try{
-    // Only players with nonzero reported points need fetching. An unknown zero
-    // remains pending: it might be a game that has not begun or a genuine zero.
-    const ids=[...new Set(rows.flatMap(row=>safeArray(row.starters).map((pid,i)=>({pid:String(pid),points:Number(row.starters_points?.[i]??row.players_points?.[pid]??0)})).filter(x=>x.points>0).map(x=>x.pid)))];
-    const logs=new Map();
-    await limitedMap(ids,4,async pid=>{
-      try{
-        const url=`${CONFIG.statsApi}/${encodeURIComponent(pid)}?season_type=regular&season=${encodeURIComponent(season)}&grouping=week`;
-        // Force an actual update rather than relying on cached game logs.
-        state.statsRequestCache.delete(url);state.jsonRequestCache.delete(url);
-        const result=await loadPlayerGameLogAverage(pid,season,scoring);
-        if(result?.rows){logs.set(pid,result.rows);state.gameLogs[season]??={};state.gameLogs[season][pid]=result.rows}
-      }catch(error){console.warn('Completed-game scoring data unavailable:',pid,error)}
-    });
-    for(const row of rows){
-      let score=0,confirmed=0,pending=0,ambiguous=0,inferred=0;const reasons={};
-      safeArray(row.starters).forEach((pid,i)=>{
-        const id=String(pid),reported=Number(row.starters_points?.[i]??row.players_points?.[id]??0);
-        if(!Number.isFinite(reported)||reported<=0){pending++;return}
-        const result=h2hMatchFinalGame(id,reported,logs.get(id),week,scoring,season);
-        if(result.game){score+=reported;confirmed++;if(result.reason==='date-inferred-match')inferred++}else{ambiguous++;reasons[result.reason]=(reasons[result.reason]||0)+1}
-      });
-      const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
-      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,inferred,reasons,updated:Date.now()});
-    }
-    renderHeadToHead();
-  }finally{h2hCompletedGameBusy=false}
-}
-function h2hOfficialScoresEditor(bundle,week,groups){
-  const totals={confirmed:0,inferred:0,unmatched:0,waiting:0,reasons:{}};
-  safeArray(groups).flat().forEach(row=>{
-    const r=h2hAutoScore(row,bundle,week);
-    if(!r)return;
-    totals.confirmed+=r.confirmed||0;totals.inferred+=r.inferred||0;
-    totals.unmatched+=r.ambiguous||0;
-    totals.waiting+=r.pending||0;
-    for(const [key,count] of Object.entries(r.reasons||{}))totals.reasons[key]=(totals.reasons[key]||0)+count;
-  });
-  const reason=Object.entries(totals.reasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>`${k.replace(/-/g,' ')}: ${v}`).join(' · ');
-  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates · ${totals.confirmed} matched (${totals.inferred} date-inferred) · ${totals.unmatched} unmatched · ${totals.waiting} not scored${reason?' · '+esc(reason):''}</span></div>`;
+  return d&&Date.now()-d.getTime()>=8*3600000?'date-inferred':'pending';
 }
 function h2hVerifiedCurrentScore(row){
   // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
@@ -1159,7 +1178,7 @@ function renderHeadToHead(){
   const week=resolveHeadToHeadWeek(bundle),groups=groupedMatchupsForWeek(bundle,week);
   if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
-  const anyScore=groups.some(group=>group.some(row=>h2hActualScore(row,bundle,week)>0)),mode=anyScore?'live':'upcoming';
+  const anyScore=groups.some(group=>group.some(row=>(h2hActualScore(row,bundle,week)??0)>0)),mode=anyScore?'live':'upcoming';
   if(!h2hCompletedGameBusy&&groups.flat().some(row=>!h2hAutoScore(row,bundle,week)||Date.now()-(h2hAutoScore(row,bundle,week)?.updated||0)>60000))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
   const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Completed-game estimates`:`Week ${week} · Pending`;status.classList.toggle('live',mode==='live')}
   const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
@@ -1172,7 +1191,7 @@ function renderHeadToHead(){
       ${h2hMatchupDetailsHTML(featured,mode,true,bundle,week)}
     </article>
     ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,data.currentA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,data.currentB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">The public Sleeper matchup API does not supply live Game Pick Mode selected-game scores. Completed-game totals are inferred by matching a starter's public score to a uniquely matching final NBA game in Sleeper game logs. These estimates are NOT authenticated selections; ambiguous or in-progress results are excluded. Manual overrides take priority and are saved only on this device. Estimates and odds are not Sleeper-verified. IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projected finish equals current score plus projections for unscored starters. Season averages fill missing projections. When selected-game status is unclear, an estimated market stays visible using starter averages or recent team form. Zero-point placeholders are treated as pending only for that estimate. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
+    <p class="h2h-method-note">Scores require an imported authenticated Sleeper matchup_legs selection ledger. IMO only counts an exact player/game ID match after that game's log indicates completion (or its date conservatively implies completion). Game status and fantasy-point calculations still require verification against Sleeper. Import is stored in this browser only, is not shared between visitors and does not auto-refresh selections; re-import whenever managers change picks. Never upload authentication tokens or headers. Projected finish and odds remain estimates.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;

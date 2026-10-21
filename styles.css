@@ -3475,3 +3475,5 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
 .h2h-score-field input{width:100%;min-width:0;background:#090f1b;border:1px solid #42506a;border-radius:8px;padding:10px;color:#fff;font-size:16px}
 .h2h-score-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
 .h2h-current-score small{white-space:normal}
+
+.h2h-ledger-upload{cursor:pointer;border:1px solid #586b94;border-radius:7px;padding:8px 12px;color:#e5efff;font-size:12px;font-weight:800;white-space:nowrap}.h2h-ledger-upload:hover{background:#27334a}.h2h-manual-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}

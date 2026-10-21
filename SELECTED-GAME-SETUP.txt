@@ -1,0 +1,18 @@
+IMO Dynasty V4.0.38 — Selected-game ledger test
+
+This version replaces inference-based scoring with exact selected-game IDs from your authenticated Sleeper matchup_legs response.
+
+To test:
+1. Deploy the contents of this ZIP to your GitHub Pages repository.
+2. Save ONLY the JSON Response returned by Sleeper's matchup_legs GraphQL request as a .json file (no headers, cookies, tokens, or request metadata).
+3. Open Head-to-Head and click 'Import selected games'. Choose that JSON file.
+4. Review the scoring diagnostic. 'No matching game ID' means the player stats feed doesn't expose the same selected game ID; do not assume a zero score.
+5. Re-import after any manager changes game selections, or for a new matchup week.
+
+IMPORTANT limitations:
+- Imported selections are saved only in the current browser, NOT shared across visitors and NOT fetched automatically.
+- Requires a secure server-side source for league-wide automatic updates. Do not put Sleeper tokens in public JavaScript, GitHub repositories or GitHub Pages.
+- A game with an unverified status may be counted only after a conservative time-based completion cutoff. Values remain experimental until checked against official Sleeper scores.
+- The public matchup API points and individual player totals are NOT used to infer selected games.
+- The selection ledger's GraphQL points field can be null; scores are computed from NBA game logs using league scoring settings.
+- If stats service game IDs do not match GraphQL numeric selected-game IDs, scores are left unverified rather than guessing.
