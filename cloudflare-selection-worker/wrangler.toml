@@ -1,0 +1,13 @@
+name = "imo-sleeper-selections"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+LEAGUE_ID = "1341763186407276544"
+
+[[kv_namespaces]]
+binding = "SELECTIONS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[triggers]
+crons = ["*/5 * * * *"]

@@ -1012,6 +1012,47 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
 // V4.0.38: Exact selection-ledger scoring. Only the authenticated, read-only
 // matchup_legs JSON supplies the selected game. Never infer a selection from
 // weekly or season totals. The import is local to this browser, with no tokens.
+// V4.0.40 — shared selection feed. Set URL in imo-live-config.js (no secrets).
+let h2hSharedFetchBusy=false;
+let h2hSharedLastAttempt=new Map();
+let h2hSharedStatus='unconfigured';
+async function h2hSyncSharedSelections(bundle,week,force=false){
+  const base=String(window.IMO_SELECTIONS_FEED_URL||'').trim().replace(/\/$/,'');
+  if(!base||!bundle||h2hSharedFetchBusy)return false;
+  const leagueId=String(bundle.league?.league_id||CONFIG.currentLeagueId);
+  const key=leagueId+':'+week;
+  if(!force&&Date.now()-(h2hSharedLastAttempt.get(key)||0)<45000)return false;
+  h2hSharedLastAttempt.set(key,Date.now());h2hSharedFetchBusy=true;
+  try{
+    const endpoint=`${base}/selections?league_id=${encodeURIComponent(leagueId)}&week=${encodeURIComponent(week)}`;
+    const response=await fetch(endpoint,{cache:'no-store'});
+    if(!response.ok)throw new Error(`Feed returned HTTP ${response.status}`);
+    const payload=await response.json();
+    if(String(payload.league_id)!==leagueId||Number(payload.week)!==Number(week))throw new Error('Feed league or week does not match');
+    const ledger=h2hValidateSelectionImport(payload,bundle,week);
+    if(!ledger.rows.length)throw new Error('No selections in feed');
+    const storageKey=h2hLedgerKey(bundle,week);
+    const previous=localStorage.getItem(storageKey);
+    const before=previous?JSON.parse(previous):null;
+    const fingerprint=JSON.stringify(ledger.rows);
+    if(JSON.stringify(before?.rows)!==fingerprint){
+      ledger.syncedAt=payload.synced_at||new Date().toISOString();
+      ledger.source='shared-worker';
+      localStorage.setItem(storageKey,JSON.stringify(ledger));
+      h2hCompletedGameCache.clear();
+      h2hSharedStatus='synced';
+      renderHeadToHead();
+      await h2hRefreshCompletedGames(bundle,week);
+      return true;
+    }
+    h2hSharedStatus='synced';
+    return false;
+  }catch(error){
+    h2hSharedStatus='error';
+    console.warn('IMO shared selected-game feed unavailable; retaining last valid ledger:',error.message);
+    return false;
+  }finally{h2hSharedFetchBusy=false}
+}
 const h2hCompletedGameCache=new Map();
 let h2hCompletedGameBusy=false;
 function h2hLedgerKey(bundle,week){return `imo-selected-games-v1:${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}`}
@@ -1118,6 +1159,8 @@ function h2hOfficialScoresEditor(bundle,week,groups){
   const ledger=h2hSelectionLedger(bundle,week),rows=groups.flat(),records=rows.map(r=>h2hAutoScore(r,bundle,week)).filter(Boolean);
   const count=ledger?.rows.reduce((n,r)=>n+Object.keys(r.starters_games||{}).length,0)||0;
   const totals=records.reduce((a,r)=>{for(const k of ['confirmed','pending','missing','unmapped','dateInferred'])a[k]+=r[k]||0;return a},{confirmed:0,pending:0,missing:0,unmapped:0,dateInferred:0});
+  const shared=Boolean(String(window.IMO_SELECTIONS_FEED_URL||""));
+  if(shared)return `<div class="h2h-manual-toolbar"><span>${ledger?`SHARED SLEEPER PICKS · ${ledger.rows.length} rosters / ${count} picks · ${totals.confirmed} scored · ${totals.pending} pending · ${totals.missing} no game log match${h2hSharedStatus==='error'?' · last successful selections retained':''}`:'SHARED SLEEPER PICKS · Waiting for the selection feed to sync'}</span></div>`;
   return `<div class="h2h-manual-toolbar"><span>${ledger?`SELECTED-GAME LEDGER · ${ledger.rows.length} rosters / ${count} picks · ${totals.confirmed} scored (${totals.dateInferred} date-inferred) · ${totals.pending} pending · ${totals.missing} no matching game ID · ${totals.unmapped} unselected`:'SELECTED-GAME LEDGER · Import the authenticated Sleeper matchup_legs JSON to enable exact selected-game scoring. No live points or unselected games will be counted.'}</span><label class="h2h-ledger-upload" for="h2h-selection-upload">${ledger?'Replace':'Import'} selected games <input id="h2h-selection-upload" type="file" accept=".json,application/json" style="display:none"></label></div>`;
 }
 function h2hGameCompletion(game){
@@ -1177,6 +1220,7 @@ function renderHeadToHead(){
   const bundle=currentLeagueBundle();if(!bundle){target.classList.remove('loading');target.innerHTML='<div class="block-empty">Current league data unavailable.</div>';return}
   const week=resolveHeadToHeadWeek(bundle),groups=groupedMatchupsForWeek(bundle,week);
   if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
+  if(window.IMO_SELECTIONS_FEED_URL)Promise.resolve().then(()=>h2hSyncSharedSelections(bundle,week));
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
   const anyScore=groups.some(group=>group.some(row=>(h2hActualScore(row,bundle,week)??0)>0)),mode=anyScore?'live':'upcoming';
   if(!h2hCompletedGameBusy&&groups.flat().some(row=>!h2hAutoScore(row,bundle,week)||Date.now()-(h2hAutoScore(row,bundle,week)?.updated||0)>60000))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
@@ -1191,7 +1235,7 @@ function renderHeadToHead(){
       ${h2hMatchupDetailsHTML(featured,mode,true,bundle,week)}
     </article>
     ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,data.currentA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,data.currentB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">Scores require an imported authenticated Sleeper matchup_legs selection ledger. IMO only counts an exact player/game ID match after that game's log indicates completion (or its date conservatively implies completion). Game status and fantasy-point calculations still require verification against Sleeper. Import is stored in this browser only, is not shared between visitors and does not auto-refresh selections; re-import whenever managers change picks. Never upload authentication tokens or headers. Projected finish and odds remain estimates.</p>`
+    <p class="h2h-method-note">Scores use exact player/game ID matches from Sleeper selections. ${window.IMO_SELECTIONS_FEED_URL?"Shared selections sync automatically from the private Worker; last valid selections are retained if the feed fails.":"Manual selection import is browser-local."} Game completion may be date-inferred where no official final status is provided. Projections and odds remain estimates.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
@@ -1211,7 +1255,7 @@ async function refreshHeadToHeadData(){
       for(const key of state.statsRequestCache.keys())if(key.includes(`/stats/nba/${season}?`)||key.includes(`season=${season}`))state.statsRequestCache.delete(key);
       await loadSeasonTotalAverages([season]);delete state.gameLogAverages[season];delete state.gameLogMeta[season];delete state.gameLogs[season];state.lastLiveMetricsAt=Date.now();
     }
-    resetComputedCaches();prepareModels();state.h2hProjectionKey="";await loadH2HProjections(currentLeagueBundle(),week);await h2hRefreshCompletedGames(currentLeagueBundle(),week);renderHeadToHead();renderForChange('market');state.dataRevision=(state.dataRevision||0)+1;state.h2hProcessedWeek=week;refreshOpenProfileData();
+    resetComputedCaches();prepareModels();state.h2hProjectionKey="";await loadH2HProjections(currentLeagueBundle(),week);await h2hSyncSharedSelections(currentLeagueBundle(),week);await h2hRefreshCompletedGames(currentLeagueBundle(),week);renderHeadToHead();renderForChange('market');state.dataRevision=(state.dataRevision||0)+1;state.h2hProcessedWeek=week;refreshOpenProfileData();
 
   }catch(error){console.warn('Head to head live refresh unavailable:',error)}
   finally{state.h2hRefreshBusy=false}
