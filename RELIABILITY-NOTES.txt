@@ -19,3 +19,12 @@ V4.0.28: passed pregame zeros, missing feed, missing starters, mismatched totals
 V4.0.29: passed screenshot-equivalent simulated search (F, season max 20, recent min 20, age max 31); unrestricted blank bounds; chemistry three-start eligibility; labelled preseason baseline; five current + five prior games; historical season averages; older cached logs do not bypass newer seasons; all-season selector; removal of improvement/chemistry controls; H2H fallback regression and JavaScript syntax. Actual mobile browser rendering not verified.
 
 V4.0.30: mobile H2H CSS isolated at <=700px. Replaced overlapping team grid with flex stacks, reset inherited projection offsets, wrapped full names, and stacked details. App/filter JavaScript byte-identical to V4.0.29; syntax and CSS block checks passed. Actual device rendering not verified.
+
+V4.0.34 EXPERIMENTAL COMPLETED-GAME SCORING
+- Scores inferred from exact uniquely matching completed Sleeper NBA game-log results and current week starter point values.
+- Not an authenticated game-pick feed; numbers can be incomplete or wrong if the inferred game is not the selected game.
+- Public API values remain unsuitable as authoritative selected-game scores.
+- Manual overrides remain available and take precedence.
+- Game-log data and current weekly matchups are refreshed periodically.
+- If a matching game is in progress, ambiguous, or missing, it is excluded.
+- Date-only game entries are eligible only 48 hours after their calendar date.

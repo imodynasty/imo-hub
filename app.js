@@ -870,7 +870,7 @@ function h2hManagerAvatar(managerId){
 function h2hFormHTML(form){return `<span class="h2h-form-badges">${form.length?form.map(x=>`<i class="${x==='W'?'win':x==='L'?'loss':'draw'}">${x}</i>`).join(''):'<small>No form</small>'}</span>`}
 function h2hKeyPlayerHTML(player,isLive){
   if(!player)return '<div class="h2h-key-player empty">No player form available</div>';
-  return `<div class="h2h-key-player"><span class="h2h-key-avatar"><img src="${esc(player.avatar)}" alt="" loading="lazy" onerror="this.style.display='none'"></span><div>${playerLink(player.id,player.name,'h2h-key-player-link')}<small>${player.recentAvg?`${player.recentAvg.toFixed(1)} avg · last 5`:'Current roster leader'}</small></div>${isLive?`<strong>${player.live.toFixed(1)}<small>LIVE</small></strong>`:''}</div>`
+  return `<div class="h2h-key-player"><span class="h2h-key-avatar"><img src="${esc(player.avatar)}" alt="" loading="lazy" onerror="this.style.display='none'"></span><div>${playerLink(player.id,player.name,'h2h-key-player-link')}<small>${player.recentAvg?`${player.recentAvg.toFixed(1)} avg · last 5`:'Current roster leader'}</small></div>${isLive?`<strong>${player.live.toFixed(1)}<small>PUBLIC FEED*</small></strong>`:''}</div>`
 }
 function h2hAverageSeason(){
   const current=currentLeagueBundle(),currentSeason=String(current?.league?.season||'2026');
@@ -910,7 +910,7 @@ function h2hLockedPreview(data,bundle,week){
 }
 function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true,bundle=null,week=null){
   const {idA,idB,keyA,keyB,formA,formB,injuriesA,injuriesB,line,favouriteA}=data;
-  const progress=(id,row)=>row.counted!==null?`${esc(managerName(id))}: ${row.counted}/${row.starters} scored · +${Number(row.remainingProjection||0).toFixed(1)} projected remaining${row.estimated?' (estimated)':''}`:`${esc(managerName(id))}: estimated finish from recent team form`;
+  const progress=(id,row)=>`${esc(managerName(id))}: ${Number.isFinite(row.current)?`${row.manual?'Manual Sleeper':'Inferred completed-game'} ${row.current.toFixed(2)}`:'completed-game data pending'} · projection estimated`;
   return `<div class="h2h-remaining-summary">${progress(idA,data.liveA)}<br>${progress(idB,data.liveB)}</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hLockedPreview(data,bundle,week))}</p></div>
     <div class="h2h-detail-grid">
       <div class="h2h-line"><span>Market line</span><strong>${esc(managerName(favouriteA?idA:idB))} −${line.toFixed(1)} <small>·</small> ${esc(managerName(favouriteA?idB:idA))} +${line.toFixed(1)}</strong></div>
@@ -1009,6 +1009,90 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
   const total=mode==='live'?liveWeightedProjection(current,pregame):Math.max(current,pregame);
   return {available:true,estimated:true,method:'team projection fallback',total:Number.isFinite(total)?total:Math.max(current,220),current,remainingProjection:null,counted:null,starters:starters.length,remaining:null}
 }
+// Game Pick Mode: Sleeper's public matchup feed does NOT expose the private
+// matchup_legs / selected-game live scoreboard. Public row.points is NOT the
+// score in the Sleeper mobile app. Allow a clearly labelled, week-scoped
+// correction until an authenticated shared feed is available.
+function h2hOverrideKey(bundle,week){return `imo-official-scores-v1:${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}`}
+function h2hManualScores(bundle,week){
+  try{const v=JSON.parse(localStorage.getItem(h2hOverrideKey(bundle,week))||'{}');return v&&typeof v==='object'?v:{}}catch(_){return {}}
+}
+// Completed-game-only experiment. This is inferred, NOT an authenticated pick ledger.
+// Do not silently count in-progress or ambiguous game rows as verified selections.
+const h2hCompletedGameCache=new Map();
+let h2hCompletedGameBusy=false;
+function h2hGameIsFinal(game){
+  const status=String(game?.game_status??game?.status??game?.gameStatus??game?.status_text??'').toLowerCase();
+  if(/\b(final|finished|complete|completed|closed)\b/.test(status))return true;
+  if(/\b(live|progress|halftime|quarter|q[1-4]|scheduled|pregame|postponed|cancelled)\b/.test(status))return false;
+  const end=game?.end_time??game?.endTime??game?.game_end_time;
+  if(end){const d=new Date(end);if(!Number.isNaN(d.getTime())&&Date.now()>d.getTime())return true}
+  // When providers omit status, only trust a game with a time-specific start
+  // long enough in the past. Date-only rows cannot prove completion.
+  const raw=game?.start_time??game?.startTime??game?.game_time??game?.date??game?.game_date;
+  if(!raw)return false;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){const day=new Date(String(raw)+'T00:00:00Z');return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>48*3600000}
+  const d=new Date(raw);return !Number.isNaN(d.getTime())&&Date.now()-d.getTime()>7*3600000;
+}
+function h2hMatchFinalGame(playerId,reported,rows,week,scoring){
+  if(!Number.isFinite(reported)||reported<=0)return null;
+  const matched=safeArray(rows).filter(game=>Number(chemistryDirectWeek(game))===Number(week)&&gameWasPlayed(game)&&h2hGameIsFinal(game))
+    .filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
+  // Multiple identically scoring completed games cannot identify the pick.
+  return matched.length===1?matched[0]:null;
+}
+function h2hAutoScore(row,bundle,week){
+  const key=`${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}:${row?.roster_id}`;
+  const cached=h2hCompletedGameCache.get(key);
+  return cached||null;
+}
+function h2hActualScore(row,bundle,week){
+  const override=h2hManualScores(bundle,week)[String(row?.roster_id)];
+  if(override!==undefined&&override!==null&&override!==''&&Number.isFinite(Number(override)))return Number(override);
+  return h2hAutoScore(row,bundle,week)?.score??null;
+}
+async function h2hRefreshCompletedGames(bundle,week){
+  if(!bundle||h2hCompletedGameBusy)return;
+  const season=String(bundle.league?.season||'2026'),scoring=bundle.league?.scoring_settings||{},groups=groupedMatchupsForWeek(bundle,week),rows=groups.flat();
+  if(!rows.length)return;
+  h2hCompletedGameBusy=true;
+  try{
+    // Only players with nonzero reported points need fetching. An unknown zero
+    // remains pending: it might be a game that has not begun or a genuine zero.
+    const ids=[...new Set(rows.flatMap(row=>safeArray(row.starters).map((pid,i)=>({pid:String(pid),points:Number(row.starters_points?.[i]??row.players_points?.[pid]??0)})).filter(x=>x.points>0).map(x=>x.pid)))];
+    const logs=new Map();
+    await limitedMap(ids,4,async pid=>{
+      try{
+        const url=`${CONFIG.statsApi}/${encodeURIComponent(pid)}?season_type=regular&season=${encodeURIComponent(season)}&grouping=week`;
+        // Force an actual update rather than relying on cached game logs.
+        state.statsRequestCache.delete(url);state.jsonRequestCache.delete(url);
+        const result=await loadPlayerGameLogAverage(pid,season,scoring);
+        if(result?.rows){logs.set(pid,result.rows);state.gameLogs[season]??={};state.gameLogs[season][pid]=result.rows}
+      }catch(error){console.warn('Completed-game scoring data unavailable:',pid,error)}
+    });
+    for(const row of rows){
+      let score=0,confirmed=0,pending=0,ambiguous=0;
+      safeArray(row.starters).forEach((pid,i)=>{
+        const id=String(pid),reported=Number(row.starters_points?.[i]??row.players_points?.[id]??0);
+        if(!Number.isFinite(reported)||reported<=0){pending++;return}
+        const game=h2hMatchFinalGame(id,reported,logs.get(id),week,scoring);
+        if(game){score+=reported;confirmed++}else ambiguous++;
+      });
+      const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
+      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,updated:Date.now()});
+    }
+    renderHeadToHead();
+  }finally{h2hCompletedGameBusy=false}
+}
+function h2hOfficialScoresEditor(bundle,week,groups){
+  const manual=h2hManualScores(bundle,week),count=Object.keys(manual).length;
+  const inputs=groups.flat().map(row=>{
+    const rid=String(row.roster_id),id=String(bundle.ownerByRoster?.[rid]||''),v=manual[rid];
+    return `<label class="h2h-score-field"><span>${esc(managerName(id))}</span><input type="number" step="0.01" min="0" max="1000" inputmode="decimal" data-score-roster="${esc(rid)}" placeholder="Not verified" value="${v===undefined?'':esc(String(v))}"></label>`;
+  }).join('');
+  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates${count?` · ${count} manual override${count===1?'':'s'}`:''}</span><button type="button" id="h2hScoreEditToggle" aria-expanded="false">Update Sleeper scores</button></div>
+  <div id="h2hOfficialEditor" class="h2h-official-editor" hidden><p>Automatic completed-game totals are inferred, not guaranteed to match selected-game picks. You can override with the official score from the Sleeper app. They stay through refreshes on this device for Week ${week}. They do not sync across devices or update automatically.</p><div class="h2h-score-fields">${inputs}</div><div class="h2h-score-actions"><button type="button" id="h2hSaveScores">Save scores</button><button type="button" id="h2hClearScores">Clear all</button></div></div>`;
+}
 function h2hVerifiedCurrentScore(row){
   // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
   // pick-a-game leagues, starters_points/players_points can contain values
@@ -1023,13 +1107,23 @@ function h2hVerifiedCurrentScore(row){
 }
 
 function buildHeadToHeadMatchup(group,bundle,week,mode){
-  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=h2hVerifiedCurrentScore(rowA),currentB=h2hVerifiedCurrentScore(rowB);
+  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=h2hActualScore(rowA,bundle,week),currentB=h2hActualScore(rowB,bundle,week);
   const liveA=h2hMarketProjection(rowA,bundle,idA,week,mode),liveB=h2hMarketProjection(rowB,bundle,idB,week,mode),available=true;
+  liveA.manual=Object.prototype.hasOwnProperty.call(h2hManualScores(bundle,week),String(rowA.roster_id));liveB.manual=Object.prototype.hasOwnProperty.call(h2hManualScores(bundle,week),String(rowB.roster_id));
+  for(const [live,actual] of [[liveA,currentA],[liveB,currentB]]){
+    if(Number.isFinite(actual)){
+      // The incomplete public player totals cannot determine unplayed picks.
+      const baseline=Number(live.total)||220;
+      live.total=Math.max(actual,baseline);
+      live.current=actual;live.counted=null;live.remainingProjection=null;
+      live.estimated=true;
+    }else{live.current=null;live.counted=null;live.remainingProjection=null;live.estimated=true}
+  }
   const finishA=liveA.total??currentA,finishB=liveB.total??currentB,odds=available?matchupOdds(finishA,finishB):{a:null,b:null},difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
   return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTED FINISH</small><b>${value.toFixed(1)}</b></span>`:''}
-function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>CURRENT SCORE</small><b>${score.toFixed(1)}</b></span>`:''}
+function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>COMPLETED GAMES PENDING</small><b>—</b></span>`}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
   return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
@@ -1042,19 +1136,20 @@ function renderHeadToHead(){
   const week=resolveHeadToHeadWeek(bundle),groups=groupedMatchupsForWeek(bundle,week);
   if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
-  const anyScore=groups.some(group=>group.some(row=>h2hVerifiedCurrentScore(row)>0)),mode=anyScore?'live':'upcoming';
-  const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Live`:`Week ${week} · Upcoming`;status.classList.toggle('live',mode==='live')}
+  const anyScore=groups.some(group=>group.some(row=>h2hActualScore(row,bundle,week)>0)),mode=anyScore?'live':'upcoming';
+  if(!h2hCompletedGameBusy&&!groups.flat().every(row=>h2hAutoScore(row,bundle,week)))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
+  const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Completed-game estimates`:`Week ${week} · Pending`;status.classList.toggle('live',mode==='live')}
   const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
   const featured=matchups[0],others=matchups.slice(1);
   target.classList.remove('loading');
   const expanded=[...target.querySelectorAll('details[open]')].map(x=>x.dataset.matchupId);
-  target.innerHTML=`<article class="h2h-featured-card ${mode}">
-      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
-      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,mode==='live'?featured.currentA:null)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,mode==='live'?featured.currentB:null)}</div>
+  target.innerHTML=`${h2hOfficialScoresEditor(bundle,week,groups)}<article class="h2h-featured-card ${mode}">
+      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> COMPLETED-GAME MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
+      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,featured.currentA)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,featured.currentB)}</div>
       ${h2hMatchupDetailsHTML(featured,mode,true,bundle,week)}
     </article>
-    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projected finish equals current score plus projections for unscored starters. Season averages fill missing projections. When selected-game status is unclear, an estimated market stays visible using starter averages or recent team form. Zero-point placeholders are treated as pending only for that estimate. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
+    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,data.currentA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,data.currentB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
+    <p class="h2h-method-note">The public Sleeper matchup API does not supply live Game Pick Mode selected-game scores. Completed-game totals are inferred by matching a starter's public score to a uniquely matching final NBA game in Sleeper game logs. These estimates are NOT authenticated selections; ambiguous or in-progress results are excluded. Manual overrides take priority and are saved only on this device. Estimates and odds are not Sleeper-verified. IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projected finish equals current score plus projections for unscored starters. Season averages fill missing projections. When selected-game status is unclear, an estimated market stays visible using starter averages or recent team form. Zero-point placeholders are treated as pending only for that estimate. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;
@@ -1074,7 +1169,7 @@ async function refreshHeadToHeadData(){
       for(const key of state.statsRequestCache.keys())if(key.includes(`/stats/nba/${season}?`)||key.includes(`season=${season}`))state.statsRequestCache.delete(key);
       await loadSeasonTotalAverages([season]);delete state.gameLogAverages[season];delete state.gameLogMeta[season];delete state.gameLogs[season];state.lastLiveMetricsAt=Date.now();
     }
-    resetComputedCaches();prepareModels();state.h2hProjectionKey="";await loadH2HProjections(currentLeagueBundle(),week);renderHeadToHead();renderForChange('market');state.dataRevision=(state.dataRevision||0)+1;state.h2hProcessedWeek=week;refreshOpenProfileData();
+    resetComputedCaches();prepareModels();state.h2hProjectionKey="";await loadH2HProjections(currentLeagueBundle(),week);await h2hRefreshCompletedGames(currentLeagueBundle(),week);renderHeadToHead();renderForChange('market');state.dataRevision=(state.dataRevision||0)+1;state.h2hProcessedWeek=week;refreshOpenProfileData();
 
   }catch(error){console.warn('Head to head live refresh unavailable:',error)}
   finally{state.h2hRefreshBusy=false}
@@ -4693,3 +4788,23 @@ document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&String(e.key)
 window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
 
+
+// Event delegation survives H2H rerenders and 60-second polling.
+document.addEventListener('click',event=>{
+  const target=event.target.closest('#h2hScoreEditToggle,#h2hSaveScores,#h2hClearScores');if(!target)return;
+  const bundle=currentLeagueBundle();if(!bundle)return;
+  const week=resolveHeadToHeadWeek(bundle),editor=document.getElementById('h2hOfficialEditor');
+  if(target.id==='h2hScoreEditToggle'){
+    editor.hidden=!editor.hidden;target.setAttribute('aria-expanded',String(!editor.hidden));return;
+  }
+  if(target.id==='h2hClearScores'){
+    localStorage.removeItem(h2hOverrideKey(bundle,week));renderHeadToHead();return;
+  }
+  const values={};
+  for(const input of editor.querySelectorAll('[data-score-roster]')){
+    const raw=input.value.trim();if(!raw)continue;
+    const n=Number(raw);if(!Number.isFinite(n)||n<0||n>1000){input.focus();alert('Enter a valid score between 0 and 1000.');return}
+    values[input.dataset.scoreRoster]=n;
+  }
+  try{localStorage.setItem(h2hOverrideKey(bundle,week),JSON.stringify(values));renderHeadToHead()}catch(error){alert('Could not save scores in this browser. Check that local storage is enabled.')}
+});

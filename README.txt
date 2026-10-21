@@ -1,3 +1,141 @@
+V4.0.30 — MOBILE HEAD TO HEAD LAYOUT
+- Replaced the conflicting mobile team grid with independent vertical stacks for avatar, full name, current score, odds, projection and form.
+- Removed inherited projection offsets that pushed badges into the opposing team and avatars into odds.
+- Full team names wrap on phones rather than truncating to a few letters.
+- Stack market-line and rivalry labels above their values; compact matchup rows and key-player names wrap safely.
+- Applies at widths up to 700px; desktop layout and all scoring/odds calculations are unchanged.
+
+V4.0.29 — SIMPLIFIED FILTERS AND CROSS-SEASON RECENT GAMES
+- Removed Improvement vs Season, including result column and sort option.
+- All empty lower/upper bounds are unrestricted. A lone max age 31 means <=31; a lone min FPTS 20 means >=20.
+- Added an IMO season selector for Season FPTS/G, defaulting to the current season.
+- If the current season has no averages or scored weeks yet, an explicitly labelled previous-season preseason baseline is used. Choosing a historical season uses that season's own averages.
+- Recent windows always mean latest individual NBA games through the current season, filling from earlier IMO seasons as needed and scoring each game with its season's IMO rules.
+- Removed the chemistry checkbox and timeframe selector. Chemistry % is now a normal optional range, always all-time with the current manager.
+- No ownership/minimum-games filters. Missing data is not zero. F includes SF/PF. Short available windows show the real game count.
+- Compact field groups embed season/recent selectors beside their ranges; three result metrics replace four.
+
+V4.0.28 — RESTORE HEAD TO HEAD FALLBACK PRICES
+- Fixed missing markets caused by ambiguous pregame zero-point starter placeholders.
+- Prefer reconciled scored points plus remaining-starter projections; otherwise keep a clearly labelled estimated market from starter projections, season averages or recent team form.
+- Same-week last-good player projections survive transient feed failures; old-week projections never carry into a new week.
+- Removed the Updated timestamp and Refresh / Retry toolbar.
+- All prior player-filter and record-card updates retained.
+
+V4.0.27 — SEARCH PLAYER FILTERS
+- Added a collapsible Player Filters panel inside existing Search; normal entity search is unchanged.
+- Optional position, season average, recent 3/5/10/20-game average, improvement and age ranges; all blank bounds are unrestricted and entered bounds are inclusive.
+- Optional current-manager chemistry with All-time / This season scope. Numeric chemistry ranges require three starts; no ownership or games-played filters.
+- Current-season per-game averages use IMO scoring and individual played NBA game logs, not weekly selected scores or preseason fallback.
+- Short recent windows show their actual games count; unknown data stays blank and cannot satisfy numeric criteria.
+- Mobile card results open existing player profiles, with sorting, 20-at-a-time pagination, progress and cancellation.
+
+V4.0.26 — WINNING MARGIN AND SELECTED PLAYER RECORDS
+- Replaced Most Trades in a Day with Biggest Winning Margin using completed selected-game team scores.
+- Preserved existing unfiltered public player-score records (all time and current season).
+- Added Highest Selected Player Score Ever and This Season, with the manager who selected the score.
+- Selected records require an exact starter game ID and recalculate the game using that season's league scoring.
+- Missing historical logs are checked in the background when League Records enters view; partial verification is labelled explicitly, never treated as an exhaustive record.
+- Expanded to ten cards with responsive layouts. Refresh / Retry reattempts selected record verification.
+
+V4.0.25 — TEAM SCORE RECORD SOURCE CORRECTION
+- Historical team-score records now prefer the same selected-game matchup archive used by Rivalries, rather than raw public weekly totals.
+- Tommy's 2024 Week 20 archive score is 316.50, not the raw public 373.0.
+- Team records exclude active weeks, zero placeholders and bye rows. Team score labels use two decimal places.
+- Player record zero placeholders are excluded. Individual historical player records still require a separate selected-game source audit.
+- Most Trades in a Day remains pending the user's replacement choice.
+
+V4.0.24 — REMAINING-STARTER ODDS AND RELIABILITY
+- Projected finish = published team total + projected fantasy points for remaining starters, using league scoring and season-average fallback.
+- Bench scores never count as completed starters. Starter scores must reconcile with the team total.
+- Ambiguous zero-point placeholders, missing projections and mismatched totals pause odds instead of inventing certainty. Live team scores stay visible.
+- Added a per-team scored-starters and projected-remaining breakdown when verified.
+- 15-second JSON request timeouts; 12-second projection request timeouts; Refresh / Retry control and last successful live update time.
+- Re-fetch current rosters every minute and current-season metrics every five minutes while visible.
+- On gameweek rollover, reload the current season so newly completed results enter ranking models without a page reload.
+- Re-render markets after deferred statistics arrive. Profile cache checks include score/metric changes and expire after 60 seconds.
+- Open profiles refresh from fresh data; matchup ordering and expanded rows remain stable during polling.
+- Generic render failures for core sections show an actionable retry message.
+- Validated using simulated payloads and JavaScript checks; a real in-season Sleeper feed and visual browser interaction remain to be verified.
+
+V4.0.23 — LIVE SCOREBOARD AND CROSS-SEASON FORM
+- Head to Head now appears above Trade of the Week.
+- Live weekly team scores are prominent on the featured and collapsed matchup cards; odds and available projections remain separate.
+- Last-five and last-three scoring averages carry completed gameweeks across season boundaries by franchise roster ID.
+- After 2026/27 Week 1: last five = one current-season week plus four prior-season weeks; last three = one plus two.
+- Active-week scores remain excluded from ranking/odds/Pooperbowl results; current roster strength remains responsive.
+- Existing early-season championship odds preseason blend is retained.
+
+V4.0.22 — COMPLETED-WEEK RANKINGS WITH LIVE ROSTER STRENGTH
+- Power Rankings, championship odds, Pooperbowl Watch and ranking trend weeks exclude the active fantasy week.
+- A week enters these models when Sleeper advances its NBA week; a complete league includes all scored weeks.
+- If the current season/week cannot be verified, current-season results are withheld rather than treating an unfinished week as final.
+- Current roster changes and current-season player averages still affect team-strength inputs midweek; Head to Head stays live.
+- Current-season standings and result-based form now use completed gameweeks rather than provisional leaders.
+- New cache keys discard previously rendered partial-week ranking markets.
+
+V4.0.21 — HEAD TO HEAD REPAIR
+- Renamed the Head to Head rivalry helper to avoid overwriting the Rivalries report helper.
+- Started the existing 60-second Head to Head refresh timer at startup.
+- Live league, sport state and weekly matchup requests now bypass in-memory and HTTP caches.
+- Updated asset version URLs and footer to 4.0.21.
+
+V4.0.20 — 2026/27 SEASON ROLLOVER
+- Manager Profile > Roster now defaults to the configured live season and shows the three most recent seasons as 2026/27, 2025/26 and 2024/25.
+- Player profiles now prioritise current-season FPTS/G, MPG and FPTS/36 as soon as NBA game data is available, with an automatic previous-season fallback during preseason.
+- Team Chemistry, MIP, player form, ticker, player spotlight, manager insights and per-minute metrics now resolve season labels and fallbacks dynamically instead of relying on hard-coded 2025/26 values.
+- Refreshed the Hub snapshot cache key so visitors receive newly loaded season data rather than an old saved view.
+- The existing configured Sleeper current league remains the source for live rosters, standings, trades, H2H, rankings, records and the live 19–0 player pool.
+
+V4.0.19 — 19–0 HISTORY REFINEMENT
+- Renamed the compact panel to “YOUR 19–0 HISTORY”, removed its reset control, and simplified the challenge introduction.
+
+V4.0.18 — 19–0 LOCAL HALL OF FAME
+- Added a compact browser-local Hall panel to the challenge screen: completed runs, best record, highest FPTS/G and best starting five. Resetting runs retains personal bests.
+
+V4.0.17 — 19–0 LIVE SEASON CHASE
+- The active IMO season now joins the player-season pool as it unfolds. New 2026/27 player-seasons appear automatically on a fresh challenge run once they reach 10 NBA games and exceed 17.50 FPTS/G under current IMO scoring.
+
+V4.0.16 — 19–0 ELIGIBILITY + LOWER-END SCALE UPDATE
+- Expanded the pool to all player-seasons above 17.50 FPTS/G, while retaining the 10-game minimum and fully random draws.
+- Updated the lower end: 19.00–19.99 = 7–12; 18.50–18.99 = 6–13; under 18.50 = 1–18.
+
+V4.0.15 — 19–0 LOWER-END SCALE UPDATE
+- Updated the lower end: 19.00–19.99 = 7–12; under 19.00 = 1–18.
+
+V4.0.14 — 19–0 TOP-END SCALE UPDATE
+- Updated the top end: 31.50+ = 19–0 and 29.00–31.49 = 18–1.
+
+V4.0.13 — 19–0 TOP-END SCALE + FULL POOL AUDIT
+- Updated the top end: 31.00+ = 19–0 and 29.00–30.99 = 18–1.
+- Confirmed each completed season uses the full Sleeper bulk-stat response (1,841 rows in the 2025 audit) before applying the 10-game / 18 FPTS/G qualification. Draws remain fully random on every restart.
+
+V4.0.12 — 19–0 USER-CALIBRATED WIN SCALE
+- Updated records to the agreed scale: 32.00+ = 19–0; 29.00–31.99 = 18–1; 28.00–28.99 = 17–2; then descending through 19.50–19.99 = 7–12; under 19.50 = 1–18.
+
+V4.0.11 — 19–0 RESULT SHARING + RECORD CALIBRATION
+- The result action now opens the native device share sheet with the generated PNG attached. Messenger appears as a destination when installed and supported by the device; Download PNG remains available alongside it.
+- Recalibrated the win curve: the submitted 144.97 FPTS five / 28.99 FPTS per player returns 17–2 and TITLE FAVOURITE.
+
+V4.0.10 — 19–0 POSITION-SAFE DRAWS
+- Player choices now filter against every remaining open roster slot. A final open C slot can only receive C-eligible players, eliminating dead-end selections.
+- Added a small Restart control at the bottom of the challenge, plus a matching Restart button after the result reveal.
+- Final screen and PNG now list the five players in locked roster order: G, F, C, UTIL, UTIL.
+
+V4.0.9 — 19–0 RESULT REVEAL POLISH
+- Final reveal now uses image-led player rows matching the PNG share card, including assigned slot, season, team, eligibility and individual FPTS/G.
+- Draft-card initials now disappear whenever a real Sleeper headshot loads; a dark IMO fallback remains only when it does not.
+- Removed technical eligibility and canvas-dimension copy from the public reveal/export.
+
+V4.0.8 — 19–0 CHALLENGE
+- Added a new League menu destination: 19–0 Challenge.
+- Draft five player-seasons from 24/25 and 25/26 using Sleeper / IMO scoring only.
+- Eligible pool requires 10+ NBA games and 18+ FPTS/G; future completed seasons are added automatically.
+- Every draw offers three players, with no rerolls. Player-seasons that were not chosen cannot return; drafting a player removes every other season of that player.
+- Assign each draft pick to a permanent G / F / C / UTIL / UTIL Starting Five slot.
+- FPTS/G remains hidden until the five-player reveal, which produces a record, title tier and 1080 × 1350 PNG share card.
+- Progress is stored locally on the device, so a challenge can be resumed after closing the Hub.
+
 V3.5.3 — TEAM CHEMISTRY ALL-TIME FIX
 - All-Time chemistry now rebuilds from loaded historical seasons.
 - Historical selected-game scoring falls back to Sleeper starters_points when players_points is unavailable.

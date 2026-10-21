@@ -3462,3 +3462,16 @@ button,.small-button,.active-window-btn,.roster-season-toggle button{font-family
   .head-to-head-panel .h2h-compact-team>.h2h-sleeper-projection b{font-size:12px}
   .head-to-head-panel .h2h-compact-team>.h2h-form-badges{grid-column:2/4;grid-row:4}
 }
+
+/* Transparent Game Pick Mode scoring workaround */
+.h2h-manual-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;color:#b7c0d4;font-size:11px;font-weight:800}
+.h2h-manual-toolbar button,.h2h-score-actions button{border:1px solid #4e6389;border-radius:9px;background:#19253b;color:#fff;padding:9px 12px;cursor:pointer;font:inherit}
+.h2h-manual-toolbar button:hover,.h2h-score-actions button:hover{border-color:#9f86ff}
+.h2h-official-editor{padding:15px;margin-bottom:12px;background:#141b29;border:1px solid #38445d;border-radius:12px;color:#cbd5e1}
+.h2h-official-editor[hidden]{display:none!important}
+.h2h-official-editor p{margin:0 0 12px;font-size:12px;line-height:1.55}
+.h2h-score-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.h2h-score-field{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700}
+.h2h-score-field input{width:100%;min-width:0;background:#090f1b;border:1px solid #42506a;border-radius:8px;padding:10px;color:#fff;font-size:16px}
+.h2h-score-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.h2h-current-score small{white-space:normal}
