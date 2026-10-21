@@ -1040,17 +1040,23 @@ function h2hGameIsFinal(game){
   // NBA games occasionally run long; give a dated tipoff at least 5 hours.
   return !!d&&Date.now()-d.getTime()>5*3600000;
 }
-function h2hMatchFinalGame(playerId,reported,rows,week,scoring){
-  if(!Number.isFinite(reported)||reported<=0)return null;
-  // Week buckets are preserved as fantasy_week by sleeperWeeklyGameRows().
-  // Scores can differ slightly between aggregate and per-game calculations,
-  // so also accept a sole finished game within the week if there is no
-  // conflicting second candidate. This is still an inference, not a pick ID.
-  const candidates=safeArray(rows).filter(game=>Number(chemistryDirectWeek(game))===Number(week)&&gameWasPlayed(game)&&h2hGameIsFinal(game));
-  const exact=candidates.filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
-  if(exact.length===1)return exact[0];
-  if(exact.length>1)return null;
-  return candidates.length===1?candidates[0]:null;
+function h2hMatchFinalGame(playerId,reported,rows,week,scoring,season){
+  if(!Number.isFinite(reported)||reported<=0)return {game:null,reason:'no-reported-points'};
+  const all=safeArray(rows);
+  if(!all.length)return {game:null,reason:'no-game-logs'};
+  // Sleeper game-log buckets aren't guaranteed to put fantasy_week on each
+  // underlying game: use the same inferred calendar as Team Chemistry.
+  const anchor=chemistrySeasonAnchor(season);
+  const weekly=all.filter(game=>Number(chemistryWeekForGame(game,season,anchor))===Number(week));
+  if(!weekly.length)return {game:null,reason:'week-not-matched'};
+  const finished=weekly.filter(game=>gameWasPlayed(game)&&h2hGameIsFinal(game));
+  if(!finished.length)return {game:null,reason:'none-final'};
+  const exact=finished.filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
+  if(exact.length===1)return {game:exact[0],reason:'verified-match'};
+  if(exact.length>1)return {game:null,reason:'multiple-score-matches'};
+  // A lone completed game only provides an inference, not a proven selection.
+  // Do not invent a final score from a mismatch.
+  return {game:null,reason:finished.length===1?'score-mismatch':'no-score-match'};
 }
 function h2hAutoScore(row,bundle,week){
   const key=`${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}:${row?.roster_id}`;
@@ -1058,10 +1064,7 @@ function h2hAutoScore(row,bundle,week){
   return cached||null;
 }
 function h2hActualScore(row,bundle,week){
-  const override=h2hManualScores(bundle,week)[String(row?.roster_id)];
-  if(override!==undefined&&override!==null&&override!==''&&Number.isFinite(Number(override)))return Number(override);
   const inferred=h2hAutoScore(row,bundle,week);
-  // An unverified aggregate of zero isn't evidence of an official zero.
   return inferred&&inferred.confirmed>0?inferred.score:null;
 }
 async function h2hRefreshCompletedGames(bundle,week){
@@ -1084,27 +1087,31 @@ async function h2hRefreshCompletedGames(bundle,week){
       }catch(error){console.warn('Completed-game scoring data unavailable:',pid,error)}
     });
     for(const row of rows){
-      let score=0,confirmed=0,pending=0,ambiguous=0;
+      let score=0,confirmed=0,pending=0,ambiguous=0;const reasons={};
       safeArray(row.starters).forEach((pid,i)=>{
         const id=String(pid),reported=Number(row.starters_points?.[i]??row.players_points?.[id]??0);
         if(!Number.isFinite(reported)||reported<=0){pending++;return}
-        const game=h2hMatchFinalGame(id,reported,logs.get(id),week,scoring);
-        if(game){score+=reported;confirmed++}else ambiguous++;
+        const result=h2hMatchFinalGame(id,reported,logs.get(id),week,scoring,season);
+        if(result.game){score+=reported;confirmed++}else{ambiguous++;reasons[result.reason]=(reasons[result.reason]||0)+1}
       });
       const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
-      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,updated:Date.now()});
+      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,reasons,updated:Date.now()});
     }
     renderHeadToHead();
   }finally{h2hCompletedGameBusy=false}
 }
 function h2hOfficialScoresEditor(bundle,week,groups){
-  const manual=h2hManualScores(bundle,week),count=Object.keys(manual).length;
-  const inputs=groups.flat().map(row=>{
-    const rid=String(row.roster_id),id=String(bundle.ownerByRoster?.[rid]||''),v=manual[rid];
-    return `<label class="h2h-score-field"><span>${esc(managerName(id))}</span><input type="number" step="0.01" min="0" max="1000" inputmode="decimal" data-score-roster="${esc(rid)}" placeholder="Not verified" value="${v===undefined?'':esc(String(v))}"></label>`;
-  }).join('');
-  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates${count?` · ${count} manual override${count===1?'':'s'}`:''}</span><button type="button" id="h2hScoreEditToggle" aria-expanded="false">Update Sleeper scores</button></div>
-  <div id="h2hOfficialEditor" class="h2h-official-editor" hidden><p>Automatic scores are inferred from finished NBA game logs. Unmatched scores display as pending rather than an incorrect zero. Estimates are not guaranteed to match selected-game picks. You can override with the official score from the Sleeper app. They stay through refreshes on this device for Week ${week}. They do not sync across devices or update automatically.</p><div class="h2h-score-fields">${inputs}</div><div class="h2h-score-actions"><button type="button" id="h2hSaveScores">Save scores</button><button type="button" id="h2hClearScores">Clear all</button></div></div>`;
+  const totals={confirmed:0,unmatched:0,waiting:0,reasons:{}};
+  safeArray(groups).flat().forEach(row=>{
+    const r=h2hAutoScore(row,bundle,week);
+    if(!r)return;
+    totals.confirmed+=r.confirmed||0;
+    totals.unmatched+=r.ambiguous||0;
+    totals.waiting+=r.pending||0;
+    for(const [key,count] of Object.entries(r.reasons||{}))totals.reasons[key]=(totals.reasons[key]||0)+count;
+  });
+  const reason=Object.entries(totals.reasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>`${k.replace(/-/g,' ')}: ${v}`).join(' · ');
+  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates · ${totals.confirmed} matched · ${totals.unmatched} unmatched · ${totals.waiting} not scored${reason?' · '+esc(reason):''}</span></div>`;
 }
 function h2hVerifiedCurrentScore(row){
   // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
@@ -1122,7 +1129,7 @@ function h2hVerifiedCurrentScore(row){
 function buildHeadToHeadMatchup(group,bundle,week,mode){
   const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=h2hActualScore(rowA,bundle,week),currentB=h2hActualScore(rowB,bundle,week);
   const liveA=h2hMarketProjection(rowA,bundle,idA,week,mode),liveB=h2hMarketProjection(rowB,bundle,idB,week,mode),available=true;
-  liveA.manual=Object.prototype.hasOwnProperty.call(h2hManualScores(bundle,week),String(rowA.roster_id));liveB.manual=Object.prototype.hasOwnProperty.call(h2hManualScores(bundle,week),String(rowB.roster_id));
+
   for(const [live,actual] of [[liveA,currentA],[liveB,currentB]]){
     if(Number.isFinite(actual)){
       // The incomplete public player totals cannot determine unplayed picks.
@@ -1150,7 +1157,7 @@ function renderHeadToHead(){
   if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
   const anyScore=groups.some(group=>group.some(row=>h2hActualScore(row,bundle,week)>0)),mode=anyScore?'live':'upcoming';
-  if(!h2hCompletedGameBusy&&!groups.flat().every(row=>h2hAutoScore(row,bundle,week)))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
+  if(!h2hCompletedGameBusy&&groups.flat().some(row=>!h2hAutoScore(row,bundle,week)||Date.now()-(h2hAutoScore(row,bundle,week)?.updated||0)>60000))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
   const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Completed-game estimates`:`Week ${week} · Pending`;status.classList.toggle('live',mode==='live')}
   const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
   const featured=matchups[0],others=matchups.slice(1);
@@ -4802,22 +4809,3 @@ window.addEventListener("popstate",openManagerFromHash);
 load().then?.(()=>openManagerFromHash());
 
 
-// Event delegation survives H2H rerenders and 60-second polling.
-document.addEventListener('click',event=>{
-  const target=event.target.closest('#h2hScoreEditToggle,#h2hSaveScores,#h2hClearScores');if(!target)return;
-  const bundle=currentLeagueBundle();if(!bundle)return;
-  const week=resolveHeadToHeadWeek(bundle),editor=document.getElementById('h2hOfficialEditor');
-  if(target.id==='h2hScoreEditToggle'){
-    editor.hidden=!editor.hidden;target.setAttribute('aria-expanded',String(!editor.hidden));return;
-  }
-  if(target.id==='h2hClearScores'){
-    localStorage.removeItem(h2hOverrideKey(bundle,week));renderHeadToHead();return;
-  }
-  const values={};
-  for(const input of editor.querySelectorAll('[data-score-roster]')){
-    const raw=input.value.trim();if(!raw)continue;
-    const n=Number(raw);if(!Number.isFinite(n)||n<0||n>1000){input.focus();alert('Enter a valid score between 0 and 1000.');return}
-    values[input.dataset.scoreRoster]=n;
-  }
-  try{localStorage.setItem(h2hOverrideKey(bundle,week),JSON.stringify(values));renderHeadToHead()}catch(error){alert('Could not save scores in this browser. Check that local storage is enabled.')}
-});
