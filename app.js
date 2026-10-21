@@ -887,27 +887,31 @@ function h2hOutPlayers(managerId){
   return managerRosterPlayers(managerId,season).filter(x=>Number(x.avg)>0).slice(0,5).filter(x=>sleeperListsPlayerOut(x.id)).map(x=>({id:String(x.id),name:x.name,avg:Number(x.avg)||0}))
 }
 function h2hNarrative(data){
-  if(data.liveA?.estimated||data.liveB?.estimated)return "Estimated odds use available starter projections, player averages or recent team form when the live feed is incomplete. They update automatically as more data arrives.";
-  const {idA,idB,keyA,keyB,odds,injuriesA,injuriesB,formA,formB}=data,nameA=managerName(idA),nameB=managerName(idB),gap=Math.abs(odds.a-odds.b),aFav=odds.a<=odds.b,fav=aFav?nameA:nameB,dog=aFav?nameB:nameA,favOdds=aFav?odds.a:odds.b;
-  const isCentre=p=>Array.isArray(p?.positions)&&p.positions.some(pos=>/^(c|center)$/i.test(String(pos).trim()));
-  const bothBigs=isCentre(keyA)&&isCentre(keyB),bothGuards=[keyA,keyB].every(p=>Array.isArray(p?.positions)&&p.positions.some(pos=>/^(pg|sg|g|guard)$/i.test(String(pos).trim())));
-  const tag=bothBigs?'Battle of the Bigs':bothGuards?'Guard Showdown':'Top Performers';
-  let first;
-  if(bothBigs&&keyA&&keyB)first=`${tag}: ${keyA.name} and ${keyB.name} headline a matchup built around true centre play.`;
-  else if(gap<=.20)first=`${tag}: ${nameA} and ${nameB} enter the week with almost nothing separating their markets.`;
-  else if(keyA&&keyB)first=`${tag}: ${fav} opens as the $${favOdds.toFixed(2)} favourite, with ${keyA.name} and ${keyB.name} shaping the key individual battle.`;
-  else first=`${fav} enters as the favourite, but ${dog} remains close enough to turn this into a live underdog opportunity.`;
-  const injuryRows=[...injuriesA.map(p=>`${p.name} (${nameA})`),...injuriesB.map(p=>`${p.name} (${nameB})`)];
-  let second='';
-  if(injuryRows.length)second=`The market also has to account for ${injuryRows.join(' and ')}, who ${injuryRows.length===1?'is':'are'} currently listed OUT.`;
-  else if(formA.length&&formB.length){const aWins=formA.filter(x=>x==='W').length,bWins=formB.filter(x=>x==='W').length;if(aWins!==bWins)second=`Recent form leans toward ${aWins>bWins?nameA:nameB}, adding pressure to ${aWins>bWins?nameB:nameA} before the week begins.`}
-  if(!second)second=`The all-time series currently reads: ${rivalryLabel(idA,idB)}.`;
-  return `${first} ${second}`
+  const {idA,idB,keyA,keyB,formA,formB}=data;
+  const nameA=managerName(idA),nameB=managerName(idB);
+  const avgA=Number(keyA?.recentAvg)||0,avgB=Number(keyB?.recentAvg)||0;
+  const winsA=formA.filter(x=>x==='W').length,winsB=formB.filter(x=>x==='W').length;
+  const leading=avgA>avgB?nameA:avgB>avgA?nameB:null;
+  const starLine=keyA&&keyB?`${keyA.name} (${nameA}) and ${keyB.name} (${nameB}) are the players to watch.`:keyA||keyB?`${(keyA||keyB).name} could be the difference-maker.`:'';
+  const record=h2hRivalryRecord(idA,idB);
+  const history=record.a+record.b+record.d?`The rivalry stands at ${record.a}–${record.b}${record.d?` with ${record.d} draw${record.d===1?'':'s'}`:''}.`:'This is a fresh chapter in their rivalry.';
+  const form=winsA===winsB?'Neither side has a clear recent-form edge.':`${winsA>winsB?nameA:nameB} has the stronger recent results.`;
+  const verdict=leading?`${leading} has the stronger featured scorer, but depth could decide it.`:'Expect a tight contest if both teams get production across their starters.';
+  return `${nameA} meets ${nameB} in a clash with plenty to prove. ${starLine} ${history} ${form} ${verdict}`;
 }
-function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true){
+function h2hLockedPreview(data,bundle,week){
+  // Save once per league, season, week and matchup so live refreshes never rewrite copy.
+  const ids=[String(data.idA),String(data.idB)].sort();
+  const key=`imo-h2h-preview-v1:${bundle?.league?.league_id||'league'}:${bundle?.league?.season||'season'}:${week}:${ids.join(':')}`;
+  try{const existing=localStorage.getItem(key);if(existing)return existing;}catch(_){ }
+  const preview=h2hNarrative(data);
+  try{localStorage.setItem(key,preview);}catch(_){ }
+  return preview;
+}
+function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true,bundle=null,week=null){
   const {idA,idB,keyA,keyB,formA,formB,injuriesA,injuriesB,line,favouriteA}=data;
   const progress=(id,row)=>row.counted!==null?`${esc(managerName(id))}: ${row.counted}/${row.starters} scored · +${Number(row.remainingProjection||0).toFixed(1)} projected remaining${row.estimated?' (estimated)':''}`:`${esc(managerName(id))}: estimated finish from recent team form`;
-  return `<div class="h2h-remaining-summary">${progress(idA,data.liveA)}<br>${progress(idB,data.liveB)}</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hNarrative(data))}</p></div>
+  return `<div class="h2h-remaining-summary">${progress(idA,data.liveA)}<br>${progress(idB,data.liveB)}</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hLockedPreview(data,bundle,week))}</p></div>
     <div class="h2h-detail-grid">
       <div class="h2h-line"><span>Market line</span><strong>${esc(managerName(favouriteA?idA:idB))} −${line.toFixed(1)} <small>·</small> ${esc(managerName(favouriteA?idB:idA))} +${line.toFixed(1)}</strong></div>
       <div class="h2h-rivalry"><span>Rivalry record</span><strong>${esc(rivalryLabel(idA,idB))}</strong></div>
@@ -962,7 +966,7 @@ function sleeperTeamProjection(row,bundle,week){
   return values.length?values.reduce((a,b)=>a+b,0):null
 }
 function h2hRemainingProjection(row,bundle){
-  const starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),total=Number(row?.points),details=[];
+  const starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),total=h2hVerifiedCurrentScore(row),details=[];
   if(!starters.length||!Number.isFinite(total))return {available:false,reason:'Starter scores unavailable'};
   let scored=0,remaining=0,counted=0,uncertain=false;
   starters.forEach((id,index)=>{
@@ -982,7 +986,7 @@ function h2hRemainingProjection(row,bundle){
 function h2hMarketProjection(row,bundle,managerId,week,mode){
   let exact;
   try{exact=h2hRemainingProjection(row,bundle);if(exact.available)return {...exact,estimated:false,method:'remaining starters'}}catch(_){ }
-  const current=Number(row?.points)||0,starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),pregame=Number(managerPreGameProjection(managerId,bundle,week))||220;
+  const current=h2hVerifiedCurrentScore(row),starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),pregame=Number(managerPreGameProjection(managerId,bundle,week))||220;
   let scored=0,counted=0,remainingProjection=0;
   starters.forEach((id,index)=>{
     const raw=Array.isArray(row.starters_points)?row.starters_points[index]:row.players_points?.[id],value=raw!==null&&raw!==undefined&&raw!==''?Number(raw):NaN;
@@ -995,8 +999,20 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
   const total=mode==='live'?liveWeightedProjection(current,pregame):Math.max(current,pregame);
   return {available:true,estimated:true,method:'team projection fallback',total:Number.isFinite(total)?total:Math.max(current,220),current,remainingProjection:null,counted:null,starters:starters.length,remaining:null}
 }
+function h2hVerifiedCurrentScore(row){
+  const starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0');
+  if(!starters.length)return 0;
+  const values=starters.map((id,index)=>{
+    const raw=Array.isArray(row?.starters_points)?row.starters_points[index]:row?.players_points?.[id];
+    return raw===null||raw===undefined||raw===''?NaN:Number(raw);
+  });
+  const valid=values.filter(Number.isFinite);
+  if(!valid.length)return 0;
+  // Do not substitute the unverified team total for player-level points.
+  return Math.round(valid.reduce((sum,value)=>sum+value,0)*100)/100;
+}
 function buildHeadToHeadMatchup(group,bundle,week,mode){
-  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=Number(rowA.points)||0,currentB=Number(rowB.points)||0;
+  const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=h2hVerifiedCurrentScore(rowA),currentB=h2hVerifiedCurrentScore(rowB);
   const liveA=h2hMarketProjection(rowA,bundle,idA,week,mode),liveB=h2hMarketProjection(rowB,bundle,idB,week,mode),available=true;
   const finishA=liveA.total??currentA,finishB=liveB.total??currentB,odds=available?matchupOdds(finishA,finishB):{a:null,b:null},difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
   return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
@@ -1015,7 +1031,7 @@ function renderHeadToHead(){
   const week=resolveHeadToHeadWeek(bundle),groups=groupedMatchupsForWeek(bundle,week);
   if(state.h2hProjectionKey!==`${String(bundle.league?.season||"2026")}:${week}`&&!state.h2hProjectionLoading)loadH2HProjections(bundle,week).then(()=>renderHeadToHead());
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
-  const anyScore=groups.some(group=>group.some(row=>Number(row.points)>0)),mode=anyScore?'live':'upcoming';
+  const anyScore=groups.some(group=>group.some(row=>h2hVerifiedCurrentScore(row)>0)),mode=anyScore?'live':'upcoming';
   const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Live`:`Week ${week} · Upcoming`;status.classList.toggle('live',mode==='live')}
   const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
   const featured=matchups[0],others=matchups.slice(1);
@@ -1024,9 +1040,9 @@ function renderHeadToHead(){
   target.innerHTML=`<article class="h2h-featured-card ${mode}">
       <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
       <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,mode==='live'?featured.currentA:null)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,mode==='live'?featured.currentB:null)}</div>
-      ${h2hMatchupDetailsHTML(featured,mode)}
+      ${h2hMatchupDetailsHTML(featured,mode,true,bundle,week)}
     </article>
-    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false)}</div></details>`).join('')}</div>`:''}
+    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,mode==='live'?data.currentA:null)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,mode==='live'?data.currentB:null)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
     <p class="h2h-method-note">IMO odds are independent from the projection, include a 5% house margin and update from the latest live matchup score. Projected finish equals current score plus projections for unscored starters. Season averages fill missing projections. When selected-game status is unclear, an estimated market stays visible using starter averages or recent team form. Zero-point placeholders are treated as pending only for that estimate. Projection totals use the available player projection feed scored with IMO league settings and total the active starters for that matchup.</p>`
 }
 async function refreshHeadToHeadData(){
