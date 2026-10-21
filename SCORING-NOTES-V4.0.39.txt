@@ -1,0 +1,1 @@
+V4.0.39: fixed Sleeper grouped-week nested stats parsing. Exact starters_games IDs now match; stats flatten for league scoring; date-only completed-game threshold is provisional (24h) and may withhold late-night final scores or count in-progress games. JSON import is local/browser-only.

@@ -1130,7 +1130,7 @@ function h2hGameCompletion(game){
   if(!raw)return 'unknown';
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){
     const day=new Date(String(raw)+'T00:00:00Z');
-    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>=36*3600000?'date-inferred':'pending';
+    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>=24*3600000?'date-inferred':'pending';
   }
   const d=chemistryGameDateValue({date:raw});
   return d&&Date.now()-d.getTime()>=8*3600000?'date-inferred':'pending';
@@ -4090,11 +4090,14 @@ function sleeperWeeklyGameRows(payload){
   const looksLikeGame=row=>{
     if(!row||typeof row!=='object'||Array.isArray(row))return false;
     const hasGameIdentity=['game_id','gameId','event_id','eventId','date','game_date','gameDate','opponent','opp'].some(k=>row[k]!=null);
-    const hasStats=['pts','points','reb','rebounds','ast','assists','stl','steals','blk','blocks','min','minutes','fgm','fga'].some(k=>numericValue(row,[k])!==null);
+    const statSource=row.stats&&typeof row.stats==='object'&&!Array.isArray(row.stats)?{...row,...row.stats}:row;
+    const hasStats=['pts','points','reb','rebounds','ast','assists','stl','steals','blk','blocks','min','minutes','fgm','fga'].some(k=>numericValue(statSource,[k])!==null);
     return hasGameIdentity&&hasStats;
   };
   const push=(row,week)=>{
-    const copy={...row};
+    // Sleeper NBA individual-game responses put the actual box score inside row.stats.
+    // Flatten those fields while retaining game_id, status, date and week metadata.
+    const copy={...row,...(row.stats&&typeof row.stats==='object'&&!Array.isArray(row.stats)?row.stats:{})};
     if(week!=null&&chemistryDirectWeek(copy)==null)copy.fantasy_week=Number(week)||week;
     const id=String(copy.game_id??copy.gameId??copy.event_id??copy.eventId??`${copy.date||copy.game_date||copy.gameDate||''}|${copy.opponent||copy.opp||''}|${out.length}`);
     const key=`${week??''}|${id}`;if(seen.has(key))return;seen.add(key);out.push(copy);
