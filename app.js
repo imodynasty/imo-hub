@@ -1022,24 +1022,35 @@ function h2hManualScores(bundle,week){
 const h2hCompletedGameCache=new Map();
 let h2hCompletedGameBusy=false;
 function h2hGameIsFinal(game){
+  // A completed box score must be distinguished from an in-progress box score.
   const status=String(game?.game_status??game?.status??game?.gameStatus??game?.status_text??'').toLowerCase();
   if(/\b(final|finished|complete|completed|closed)\b/.test(status))return true;
   if(/\b(live|progress|halftime|quarter|q[1-4]|scheduled|pregame|postponed|cancelled)\b/.test(status))return false;
   const end=game?.end_time??game?.endTime??game?.game_end_time;
-  if(end){const d=new Date(end);if(!Number.isNaN(d.getTime())&&Date.now()>d.getTime())return true}
-  // When providers omit status, only trust a game with a time-specific start
-  // long enough in the past. Date-only rows cannot prove completion.
+  if(end){const d=chemistryGameDateValue({date:end});if(d&&Date.now()>d.getTime())return true}
   const raw=game?.start_time??game?.startTime??game?.game_time??game?.date??game?.game_date;
   if(!raw)return false;
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){const day=new Date(String(raw)+'T00:00:00Z');return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>48*3600000}
-  const d=new Date(raw);return !Number.isNaN(d.getTime())&&Date.now()-d.getTime()>7*3600000;
+  // A date-only value cannot establish that a *today* game is over. For
+  // past dates, use a conservative next-day cutoff rather than waiting 48 h.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){
+    const day=new Date(String(raw)+'T00:00:00Z');
+    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>32*3600000;
+  }
+  const d=chemistryGameDateValue({date:raw});
+  // NBA games occasionally run long; give a dated tipoff at least 5 hours.
+  return !!d&&Date.now()-d.getTime()>5*3600000;
 }
 function h2hMatchFinalGame(playerId,reported,rows,week,scoring){
   if(!Number.isFinite(reported)||reported<=0)return null;
-  const matched=safeArray(rows).filter(game=>Number(chemistryDirectWeek(game))===Number(week)&&gameWasPlayed(game)&&h2hGameIsFinal(game))
-    .filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
-  // Multiple identically scoring completed games cannot identify the pick.
-  return matched.length===1?matched[0]:null;
+  // Week buckets are preserved as fantasy_week by sleeperWeeklyGameRows().
+  // Scores can differ slightly between aggregate and per-game calculations,
+  // so also accept a sole finished game within the week if there is no
+  // conflicting second candidate. This is still an inference, not a pick ID.
+  const candidates=safeArray(rows).filter(game=>Number(chemistryDirectWeek(game))===Number(week)&&gameWasPlayed(game)&&h2hGameIsFinal(game));
+  const exact=candidates.filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
+  if(exact.length===1)return exact[0];
+  if(exact.length>1)return null;
+  return candidates.length===1?candidates[0]:null;
 }
 function h2hAutoScore(row,bundle,week){
   const key=`${bundle?.league?.league_id||CONFIG.currentLeagueId}:${week}:${row?.roster_id}`;
@@ -1049,7 +1060,9 @@ function h2hAutoScore(row,bundle,week){
 function h2hActualScore(row,bundle,week){
   const override=h2hManualScores(bundle,week)[String(row?.roster_id)];
   if(override!==undefined&&override!==null&&override!==''&&Number.isFinite(Number(override)))return Number(override);
-  return h2hAutoScore(row,bundle,week)?.score??null;
+  const inferred=h2hAutoScore(row,bundle,week);
+  // An unverified aggregate of zero isn't evidence of an official zero.
+  return inferred&&inferred.confirmed>0?inferred.score:null;
 }
 async function h2hRefreshCompletedGames(bundle,week){
   if(!bundle||h2hCompletedGameBusy)return;
@@ -1091,7 +1104,7 @@ function h2hOfficialScoresEditor(bundle,week,groups){
     return `<label class="h2h-score-field"><span>${esc(managerName(id))}</span><input type="number" step="0.01" min="0" max="1000" inputmode="decimal" data-score-roster="${esc(rid)}" placeholder="Not verified" value="${v===undefined?'':esc(String(v))}"></label>`;
   }).join('');
   return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates${count?` · ${count} manual override${count===1?'':'s'}`:''}</span><button type="button" id="h2hScoreEditToggle" aria-expanded="false">Update Sleeper scores</button></div>
-  <div id="h2hOfficialEditor" class="h2h-official-editor" hidden><p>Automatic completed-game totals are inferred, not guaranteed to match selected-game picks. You can override with the official score from the Sleeper app. They stay through refreshes on this device for Week ${week}. They do not sync across devices or update automatically.</p><div class="h2h-score-fields">${inputs}</div><div class="h2h-score-actions"><button type="button" id="h2hSaveScores">Save scores</button><button type="button" id="h2hClearScores">Clear all</button></div></div>`;
+  <div id="h2hOfficialEditor" class="h2h-official-editor" hidden><p>Automatic scores are inferred from finished NBA game logs. Unmatched scores display as pending rather than an incorrect zero. Estimates are not guaranteed to match selected-game picks. You can override with the official score from the Sleeper app. They stay through refreshes on this device for Week ${week}. They do not sync across devices or update automatically.</p><div class="h2h-score-fields">${inputs}</div><div class="h2h-score-actions"><button type="button" id="h2hSaveScores">Save scores</button><button type="button" id="h2hClearScores">Clear all</button></div></div>`;
 }
 function h2hVerifiedCurrentScore(row){
   // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
@@ -1123,7 +1136,7 @@ function buildHeadToHeadMatchup(group,bundle,week,mode){
   return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTED FINISH</small><b>${value.toFixed(1)}</b></span>`:''}
-function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>COMPLETED GAMES PENDING</small><b>—</b></span>`}
+function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED-GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>AWAITING VERIFIED GAMES</small><b>—</b></span>`}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
   return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }
