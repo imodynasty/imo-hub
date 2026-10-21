@@ -1,0 +1,6 @@
+IMO V4.0.43
+- Removed Projected Finish display; added players remaining including currently live and yet to start. Uses exact selected-game record; only final/date-inferred final games are considered finished.
+- Key Matchups chooses the highest recent-five NBA-game average on each team's current roster, updates as game form changes, and no longer locks players. Displays last-five and season average.
+- Removed shared feed diagnostic toolbar and obsolete completed-game matchup wording.
+- Existing live score and Cloudflare Worker logic preserved.
+Note: Missing game logs remain counted as players remaining; date-inferred final status can be delayed.

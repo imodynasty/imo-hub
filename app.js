@@ -856,21 +856,59 @@ function h2hPlayerLastFiveAverage(playerId,bundle){
   if(seasonAvg>0)return seasonAvg;
   return Number(seasonAverageMap(h2hAverageSeason())?.[id]||latestKnownAverage(id)||0)
 }
-function keyMatchupPlayer(managerId,row){
-  const bundle=currentLeagueBundle(),rosterIds=(state.managers.get(String(managerId))?.roster?.players||[]).map(String);
-  const ranked=rosterIds.map(id=>({id,name:playerName(id),recentAvg:h2hPlayerLastFiveAverage(id,bundle)})).filter(x=>x.recentAvg>0).sort((a,b)=>b.recentAvg-a.recentAvg);
-  const fallback=managerRosterPlayers(managerId,String(bundle?.league?.season||'2026'))[0]||managerRosterPlayers(managerId,'2025')[0]||null;
-  const chosen=ranked[0]||fallback;if(!chosen)return null;
-  const id=String(chosen.id),recentAvg=Number(chosen.recentAvg??chosen.avg??0),live=Number(row?.players_points?.[id]||0),player=state.players[id]||{},positions=[...(player.fantasy_positions||[]),player.position].filter(Boolean).map(String);
-  return{id,name:chosen.name||playerName(id),recentAvg,live,position:positions[0]||chosen.position||'',positions,avatar:`https://sleepercdn.com/content/nba/players/${id}.jpg`}
+// V4.0.43: Choose each team's highest last-five-NBA-game average.
+// No browser lock. Load recent form for the full roster so this is not a
+// disguised season-average selection; refresh the cache as stats change.
+const h2hMainEventFormCache=new Map();
+const h2hMainEventFormBusy=new Set();
+function h2hMainEventPlayer(managerId,bundle,week){
+  const ids=[...new Set(safeArray(state.managers.get(String(managerId))?.roster?.players).map(String))];
+  if(!ids.length)return null;
+  const season=String(bundle?.league?.season||'2026');
+  const key=`${season}:${managerId}:${ids.join(',')}`;
+  const existing=h2hMainEventFormCache.get(key);
+  if(!h2hMainEventFormBusy.has(key)&&(!existing||Date.now()-existing.updated>300000)){
+    h2hMainEventFormBusy.add(key);
+    Promise.resolve().then(async()=>{
+      const scoring=bundle?.league?.scoring_settings||{},results=[];
+      try{
+        await limitedMap(ids,5,async id=>{
+          const played=[];
+          for(const candidate of [season,String(Number(season)-1)]){
+            let rows=safeArray(state.gameLogs[candidate]?.[id]);
+            if(!rows.length){
+              try{const result=await loadPlayerGameLogAverage(id,candidate,scoring);rows=safeArray(result?.rows);
+                if(rows.length){state.gameLogs[candidate]??={};state.gameLogs[candidate][id]=rows}
+              }catch(_){rows=[]}
+            }
+            played.push(...rows.filter(gameWasPlayed).map(row=>({date:String(row.date||row.game_date||''),score:rawFantasyPoints(row,scoring)})).filter(x=>Number.isFinite(x.score)));
+            if(played.length>=5)break;
+          }
+          played.sort((a,b)=>b.date.localeCompare(a.date));
+          const recent=played.slice(0,5);
+          if(recent.length)results.push({id,avg:recent.reduce((sum,x)=>sum+x.score,0)/recent.length,count:recent.length});
+        });
+        results.sort((a,b)=>b.avg-a.avg||b.count-a.count||a.id.localeCompare(b.id));
+        h2hMainEventFormCache.set(key,{leader:results[0]||null,updated:Date.now()});
+      }finally{h2hMainEventFormBusy.delete(key);renderHeadToHead()}
+    });
+  }
+  // Never claim a season-average leader is a last-five leader while loading.
+  const leader=existing?.leader;
+  if(!leader)return null;
+  const id=leader.id;
+  const seasonAvg=Number(seasonAverageMap(season)?.[id]||0)||Number(latestKnownAverage(id)||0);
+  return {id,name:playerName(id),seasonAvg,lastFiveAvg:leader.avg,avatar:`https://sleepercdn.com/content/nba/players/${id}.jpg`};
 }
 function h2hManagerAvatar(managerId){
   const manager=state.managers.get(String(managerId));return manager?.avatar?`<img src="${esc(manager.avatar)}" alt="" loading="lazy">`:`<span>${esc(manager?.initials||'—')}</span>`
 }
 function h2hFormHTML(form){return `<span class="h2h-form-badges">${form.length?form.map(x=>`<i class="${x==='W'?'win':x==='L'?'loss':'draw'}">${x}</i>`).join(''):'<small>No form</small>'}</span>`}
-function h2hKeyPlayerHTML(player,isLive){
+function h2hKeyPlayerHTML(player){
   if(!player)return '<div class="h2h-key-player empty">No player form available</div>';
-  return `<div class="h2h-key-player"><span class="h2h-key-avatar"><img src="${esc(player.avatar)}" alt="" loading="lazy" onerror="this.style.display='none'"></span><div>${playerLink(player.id,player.name,'h2h-key-player-link')}<small>${player.recentAvg?`${player.recentAvg.toFixed(1)} avg · last 5`:'Current roster leader'}</small></div>${isLive?`<strong>${player.live.toFixed(1)}<small>PUBLIC FEED*</small></strong>`:''}</div>`
+  const lastFive=Number.isFinite(player.lastFiveAvg)?player.lastFiveAvg.toFixed(1):'—';
+  const season=Number.isFinite(player.seasonAvg)?player.seasonAvg.toFixed(1):'—';
+  return `<div class="h2h-key-player"><span class="h2h-key-avatar"><img src="${esc(player.avatar)}" alt="" loading="lazy" onerror="this.style.display='none'"></span><div>${playerLink(player.id,player.name,'h2h-key-player-link')}<small>Season avg ${season}</small></div><strong>${lastFive}<small>LAST 5 GAMES AVG</small></strong></div>`;
 }
 function h2hAverageSeason(){
   const current=currentLeagueBundle(),currentSeason=String(current?.league?.season||'2026');
@@ -889,7 +927,7 @@ function h2hOutPlayers(managerId){
 function h2hNarrative(data){
   const {idA,idB,keyA,keyB,formA,formB}=data;
   const nameA=managerName(idA),nameB=managerName(idB);
-  const avgA=Number(keyA?.recentAvg)||0,avgB=Number(keyB?.recentAvg)||0;
+  const avgA=Number(keyA?.seasonAvg)||0,avgB=Number(keyB?.seasonAvg)||0;
   const winsA=formA.filter(x=>x==='W').length,winsB=formB.filter(x=>x==='W').length;
   const leading=avgA>avgB?nameA:avgB>avgA?nameB:null;
   const starLine=keyA&&keyB?`${keyA.name} (${nameA}) and ${keyB.name} (${nameB}) are the players to watch.`:keyA||keyB?`${(keyA||keyB).name} could be the difference-maker.`:'';
@@ -910,14 +948,13 @@ function h2hLockedPreview(data,bundle,week){
 }
 function h2hMatchupDetailsHTML(data,mode,includeRecentForm=true,bundle=null,week=null){
   const {idA,idB,keyA,keyB,formA,formB,injuriesA,injuriesB,line,favouriteA}=data;
-  const progress=(id,row)=>`${esc(managerName(id))}: ${Number.isFinite(row.current)?`Selected-game total ${row.current.toFixed(2)}`:'selected-game data pending'} · projection estimated`;
-  return `<div class="h2h-remaining-summary">${progress(idA,data.liveA)}<br>${progress(idB,data.liveB)}</div><div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hLockedPreview(data,bundle,week))}</p></div>
+  return `<div class="h2h-preview"><span>MATCHUP PREVIEW</span><p>${esc(h2hLockedPreview(data,bundle,week))}</p></div>
     <div class="h2h-detail-grid">
       <div class="h2h-line"><span>Market line</span><strong>${esc(managerName(favouriteA?idA:idB))} −${line.toFixed(1)} <small>·</small> ${esc(managerName(favouriteA?idB:idA))} +${line.toFixed(1)}</strong></div>
       <div class="h2h-rivalry"><span>Rivalry record</span><strong>${esc(rivalryLabel(idA,idB))}</strong></div>
     </div>
-    <div class="h2h-key-heading"><span>MAIN EVENT</span><small>Top last-five performer</small></div>
-    <div class="h2h-main-event"><div class="h2h-main-event-player">${h2hKeyPlayerHTML(keyA,mode==='live')}</div><span class="h2h-main-event-vs">VS</span><div class="h2h-main-event-player right">${h2hKeyPlayerHTML(keyB,mode==='live')}</div></div>
+    <div class="h2h-key-heading"><span>KEY MATCHUPS</span><small>Best last-five-game averages</small></div>
+    <div class="h2h-main-event"><div class="h2h-main-event-player">${h2hKeyPlayerHTML(keyA)}</div><span class="h2h-main-event-vs">VS</span><div class="h2h-main-event-player right">${h2hKeyPlayerHTML(keyB)}</div></div>
     ${includeRecentForm?`<div class="h2h-expanded-form"><span>Recent form</span><div>${esc(managerName(idA))}${h2hFormHTML(formA)}</div><div>${esc(managerName(idB))}${h2hFormHTML(formB)}</div></div>`:''}`
 }
 function projectionFantasyPoints(row,scoring){
@@ -1134,23 +1171,23 @@ async function h2hRefreshCompletedGames(bundle,week){
     });
     for(const row of rows){
       const selected=lookup.get(Number(row.roster_id));
-      let score=0,confirmed=0,pending=0,missing=0,unmapped=0,dateInferred=0;
+      let score=0,confirmed=0,pending=0,missing=0,unmapped=0,dateInferred=0,remaining=0;
       const playerBreakdown=[];
       for(const pid of selected.starters){
         const gameId=selected.starters_games?.[pid];
-        if(!gameId){unmapped++;continue}
+        if(!gameId){unmapped++;remaining++;continue}
         const game=safeArray(logs.get(String(pid))).find(g=>rivalryGameId(g)===String(gameId));
-        if(!game){missing++;continue}
-        if(!gameWasPlayed(game)){pending++;continue}
+        if(!game){missing++;remaining++;continue}
+        if(!gameWasPlayed(game)){pending++;remaining++;continue}
         const completion=h2hGameCompletion(game);
-        if(completion!=='final'&&completion!=='date-inferred'){pending++;continue}
+        if(completion!=='final'&&completion!=='date-inferred'){pending++;remaining++;continue}
         const pts=rivalryLeagueFantasyPoints(game,scoring);
-        if(!Number.isFinite(pts)){missing++;continue}
+        if(!Number.isFinite(pts)){missing++;remaining++;continue}
         score+=pts;confirmed++;if(completion==='date-inferred')dateInferred++;
         playerBreakdown.push({id:String(pid),gameId,points:pts,completion});
       }
       const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
-      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,checked:true,confirmed,pending,missing,unmapped,dateInferred,playerBreakdown,updated:Date.now()});
+      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,checked:true,confirmed,pending,missing,unmapped,dateInferred,remaining,playerBreakdown,updated:Date.now()});
     }
     renderHeadToHead();
   }finally{h2hCompletedGameBusy=false}
@@ -1160,7 +1197,7 @@ function h2hOfficialScoresEditor(bundle,week,groups){
   const count=ledger?.rows.reduce((n,r)=>n+Object.keys(r.starters_games||{}).length,0)||0;
   const totals=records.reduce((a,r)=>{for(const k of ['confirmed','pending','missing','unmapped','dateInferred'])a[k]+=r[k]||0;return a},{confirmed:0,pending:0,missing:0,unmapped:0,dateInferred:0});
   const shared=Boolean(String(window.IMO_SELECTIONS_FEED_URL||""));
-  if(shared)return `<div class="h2h-manual-toolbar"><span>${ledger?`SHARED SLEEPER PICKS · ${ledger.rows.length} rosters / ${count} picks · ${totals.confirmed} scored · ${totals.pending} pending · ${totals.missing} no game log match${h2hSharedStatus==='error'?' · last successful selections retained':''}`:'SHARED SLEEPER PICKS · Waiting for the selection feed to sync'}</span></div>`;
+  if(shared)return '';
   return `<div class="h2h-manual-toolbar"><span>${ledger?`SELECTED-GAME LEDGER · ${ledger.rows.length} rosters / ${count} picks · ${totals.confirmed} scored (${totals.dateInferred} date-inferred) · ${totals.pending} pending · ${totals.missing} no matching game ID · ${totals.unmapped} unselected`:'SELECTED-GAME LEDGER · Import the authenticated Sleeper matchup_legs JSON to enable exact selected-game scoring. No live points or unselected games will be counted.'}</span><label class="h2h-ledger-upload" for="h2h-selection-upload">${ledger?'Replace':'Import'} selected games <input id="h2h-selection-upload" type="file" accept=".json,application/json" style="display:none"></label></div>`;
 }
 function h2hGameCompletion(game){
@@ -1205,15 +1242,20 @@ function buildHeadToHeadMatchup(group,bundle,week,mode){
     }else{live.current=null;live.counted=null;live.remainingProjection=null;live.estimated=true}
   }
   const finishA=liveA.total??currentA,finishB=liveB.total??currentB,odds=available?matchupOdds(finishA,finishB):{a:null,b:null},difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
-  return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
+  return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:h2hMainEventPlayer(idA,bundle,week),keyB:h2hMainEventPlayer(idB,bundle,week),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
-function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTED FINISH</small><b>${value.toFixed(1)}</b></span>`:''}
-function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED-GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>AWAITING COMPLETED GAMES</small><b>—</b></span>`}
-function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
-  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+function h2hPlayersRemainingHTML(row,bundle,week){
+  const record=h2hAutoScore(row,bundle,week);
+  if(!record?.checked)return `<span class="h2h-sleeper-projection"><small>PLAYERS REMAINING</small><b>—</b></span>`;
+  const count=Number(record.remaining)||0;
+  return `<span class="h2h-sleeper-projection"><small>PLAYERS REMAINING</small><b>${count} ${count===1?'player':'players'} remaining</b></span>`;
 }
-function h2hCompactTeamHTML(managerId,odds,form,projection,score=null){
-  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong>${h2hScoreHTML(score)}<em>$${Number.isFinite(odds)?odds.toFixed(2):'—'}</em>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
+function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>LIVE SCORE</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>AWAITING LIVE SCORES</small><b>—</b></span>`}
+function h2hFeaturedTeamHTML(managerId,odds,form,side,row,bundle,week,score=null){
+  return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hPlayersRemainingHTML(row,bundle,week)}${h2hFormHTML(form)}</div>`
+}
+function h2hCompactTeamHTML(managerId,odds,form,row,bundle,week,score=null){
+  return `<div class="h2h-compact-team"><span class="h2h-compact-avatar">${h2hManagerAvatar(managerId)}</span><strong>${esc(managerName(managerId))}</strong>${h2hScoreHTML(score)}<em>$${Number.isFinite(odds)?odds.toFixed(2):'—'}</em>${h2hPlayersRemainingHTML(row,bundle,week)}${h2hFormHTML(form)}</div>`
 }
 function renderHeadToHead(){
   const target=$("headToHead");if(!target)return;
@@ -1224,18 +1266,17 @@ function renderHeadToHead(){
   if(!groups.length){target.classList.remove('loading');target.innerHTML=`<div class="h2h-empty"><strong>Week ${week} matchups are not available yet.</strong><small>The board will populate automatically when Sleeper publishes the gameweek.</small></div>`;return}
   const anyScore=groups.some(group=>group.some(row=>(h2hActualScore(row,bundle,week)??0)>0)),mode=anyScore?'live':'upcoming';
   if(!h2hCompletedGameBusy&&groups.flat().some(row=>!h2hAutoScore(row,bundle,week)||Date.now()-(h2hAutoScore(row,bundle,week)?.updated||0)>60000))Promise.resolve().then(()=>h2hRefreshCompletedGames(bundle,week));
-  const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Completed-game estimates`:`Week ${week} · Pending`;status.classList.toggle('live',mode==='live')}
+  const status=$("headToHeadStatus");if(status){status.textContent=mode==='live'?`Week ${week} · Live scoring`:`Week ${week} · Pending`;status.classList.toggle('live',mode==='live')}
   const matchups=groups.map(group=>buildHeadToHeadMatchup(group,bundle,week,mode)).sort((a,b)=>Number(a.rowA.matchup_id)-Number(b.rowA.matchup_id));
   const featured=matchups[0],others=matchups.slice(1);
   target.classList.remove('loading');
   const expanded=[...target.querySelectorAll('details[open]')].map(x=>x.dataset.matchupId);
   target.innerHTML=`${h2hOfficialScoresEditor(bundle,week,groups)}<article class="h2h-featured-card ${mode}">
-      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> COMPLETED-GAME MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
-      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.sleeperProjectionA,featured.currentA)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.sleeperProjectionB,featured.currentB)}</div>
+      <div class="h2h-card-kicker"><span>${mode==='live'?'<i></i> LIVE MATCHUP':'WEEKLY MATCHUP'}</span><small>Week ${week}</small></div>
+      <div class="h2h-featured-market">${h2hFeaturedTeamHTML(featured.idA,featured.odds.a,featured.formA,'left',featured.rowA,bundle,week,featured.currentA)}<div class="h2h-market-centre"><span>VS</span></div>${h2hFeaturedTeamHTML(featured.idB,featured.odds.b,featured.formB,'right',featured.rowB,bundle,week,featured.currentB)}</div>
       ${h2hMatchupDetailsHTML(featured,mode,true,bundle,week)}
     </article>
-    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.sleeperProjectionA,data.currentA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.sleeperProjectionB,data.currentB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}
-    <p class="h2h-method-note">Scores use exact player/game ID matches from Sleeper selections. ${window.IMO_SELECTIONS_FEED_URL?"Shared selections sync automatically from the private Worker; last valid selections are retained if the feed fails.":"Manual selection import is browser-local."} Game completion may be date-inferred where no official final status is provided. Projections and odds remain estimates.</p>`
+    ${others.length?`<div class="h2h-other-heading"><span>OTHER MATCHUPS</span><small>Tap a row to expand</small></div><div class="h2h-compact-list">${others.map((data,index)=>`<details data-matchup-id="${esc(data.rowA.matchup_id)}" class="h2h-compact-matchup ${mode}" ${expanded.includes(String(data.rowA.matchup_id))?'open':''}><summary><div class="h2h-compact-pair">${h2hCompactTeamHTML(data.idA,data.odds.a,data.formA,data.rowA,bundle,week,data.currentA)}${h2hCompactTeamHTML(data.idB,data.odds.b,data.formB,data.rowB,bundle,week,data.currentB)}</div><span class="h2h-expand-mark">+</span></summary><div class="h2h-compact-details">${h2hMatchupDetailsHTML(data,mode,false,bundle,week)}</div></details>`).join('')}</div>`:''}`
 }
 async function refreshHeadToHeadData(){
   if(state.h2hRefreshBusy||document.hidden)return;state.h2hRefreshBusy=true;

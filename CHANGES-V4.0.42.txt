@@ -1,0 +1,7 @@
+IMO Dynasty V4.0.42
+- Head-to-Head: Removed redundant selected-game progress lines and methodology notice.
+- Current score label renamed LIVE SCORE.
+- Main Event: highest season-average player per team, locked in browser storage for the matchup week. Week 1 uses previous season baseline to avoid first-game ranking drift.
+- Main Event: highlights last five NBA game fantasy-point average (computed from current season, then previous season as needed); smaller text displays season average.
+- Selected-game live scorer and Cloudflare sync unchanged.
+Note: Main Event lock is local-browser persistence, not cloud-synchronised.
