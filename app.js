@@ -1021,25 +1021,28 @@ function h2hManualScores(bundle,week){
 // Do not silently count in-progress or ambiguous game rows as verified selections.
 const h2hCompletedGameCache=new Map();
 let h2hCompletedGameBusy=false;
-function h2hGameIsFinal(game){
-  // A completed box score must be distinguished from an in-progress box score.
+function h2hGameCompletion(game){
+  // A game-log row with a true final status is the strongest available signal.
   const status=String(game?.game_status??game?.status??game?.gameStatus??game?.status_text??'').toLowerCase();
-  if(/\b(final|finished|complete|completed|closed)\b/.test(status))return true;
-  if(/\b(live|progress|halftime|quarter|q[1-4]|scheduled|pregame|postponed|cancelled)\b/.test(status))return false;
+  if(/\b(final|finished|complete|completed|closed)\b/.test(status))return 'final';
+  if(/\b(live|progress|halftime|quarter|q[1-4]|scheduled|pregame|postponed|cancelled)\b/.test(status))return 'pending';
   const end=game?.end_time??game?.endTime??game?.game_end_time;
-  if(end){const d=chemistryGameDateValue({date:end});if(d&&Date.now()>d.getTime())return true}
-  const raw=game?.start_time??game?.startTime??game?.game_time??game?.date??game?.game_date;
-  if(!raw)return false;
-  // A date-only value cannot establish that a *today* game is over. For
-  // past dates, use a conservative next-day cutoff rather than waiting 48 h.
+  if(end){const d=chemistryGameDateValue({date:end});if(d&&Date.now()>d.getTime())return 'final'}
+  const raw=game?.start_time??game?.startTime??game?.game_time??game?.date??game?.game_date??game?.gameDate;
+  if(!raw)return 'unknown';
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))){
+    // Sleeper's game-only logs frequently omit an explicit final flag or time.
+    // A game dated prior to today (UTC) is a *date-inferred* completion, not
+    // authoritative; retain that distinction in the diagnostics/UI.
     const day=new Date(String(raw)+'T00:00:00Z');
-    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>32*3600000;
+    return !Number.isNaN(day.getTime())&&Date.now()-day.getTime()>=24*3600000?'date-inferred':'pending';
   }
   const d=chemistryGameDateValue({date:raw});
-  // NBA games occasionally run long; give a dated tipoff at least 5 hours.
-  return !!d&&Date.now()-d.getTime()>5*3600000;
+  // No status: a precise tipoff older than five hours is still only inferred.
+  return d&&Date.now()-d.getTime()>=5*3600000?'date-inferred':'pending';
 }
+function h2hGameIsFinal(game){return ['final','date-inferred'].includes(h2hGameCompletion(game))}
+
 function h2hMatchFinalGame(playerId,reported,rows,week,scoring,season){
   if(!Number.isFinite(reported)||reported<=0)return {game:null,reason:'no-reported-points'};
   const all=safeArray(rows);
@@ -1052,7 +1055,7 @@ function h2hMatchFinalGame(playerId,reported,rows,week,scoring,season){
   const finished=weekly.filter(game=>gameWasPlayed(game)&&h2hGameIsFinal(game));
   if(!finished.length)return {game:null,reason:'none-final'};
   const exact=finished.filter(game=>{const pts=rawFantasyPoints(game,scoring);return Number.isFinite(pts)&&Math.abs(pts-reported)<0.051});
-  if(exact.length===1)return {game:exact[0],reason:'verified-match'};
+  if(exact.length===1)return {game:exact[0],reason:h2hGameCompletion(exact[0])==='final'?'verified-match':'date-inferred-match'};
   if(exact.length>1)return {game:null,reason:'multiple-score-matches'};
   // A lone completed game only provides an inference, not a proven selection.
   // Do not invent a final score from a mismatch.
@@ -1087,31 +1090,31 @@ async function h2hRefreshCompletedGames(bundle,week){
       }catch(error){console.warn('Completed-game scoring data unavailable:',pid,error)}
     });
     for(const row of rows){
-      let score=0,confirmed=0,pending=0,ambiguous=0;const reasons={};
+      let score=0,confirmed=0,pending=0,ambiguous=0,inferred=0;const reasons={};
       safeArray(row.starters).forEach((pid,i)=>{
         const id=String(pid),reported=Number(row.starters_points?.[i]??row.players_points?.[id]??0);
         if(!Number.isFinite(reported)||reported<=0){pending++;return}
         const result=h2hMatchFinalGame(id,reported,logs.get(id),week,scoring,season);
-        if(result.game){score+=reported;confirmed++}else{ambiguous++;reasons[result.reason]=(reasons[result.reason]||0)+1}
+        if(result.game){score+=reported;confirmed++;if(result.reason==='date-inferred-match')inferred++}else{ambiguous++;reasons[result.reason]=(reasons[result.reason]||0)+1}
       });
       const key=`${bundle.league?.league_id||CONFIG.currentLeagueId}:${week}:${row.roster_id}`;
-      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,reasons,updated:Date.now()});
+      h2hCompletedGameCache.set(key,{score:Math.round(score*100)/100,confirmed,pending,ambiguous,inferred,reasons,updated:Date.now()});
     }
     renderHeadToHead();
   }finally{h2hCompletedGameBusy=false}
 }
 function h2hOfficialScoresEditor(bundle,week,groups){
-  const totals={confirmed:0,unmatched:0,waiting:0,reasons:{}};
+  const totals={confirmed:0,inferred:0,unmatched:0,waiting:0,reasons:{}};
   safeArray(groups).flat().forEach(row=>{
     const r=h2hAutoScore(row,bundle,week);
     if(!r)return;
-    totals.confirmed+=r.confirmed||0;
+    totals.confirmed+=r.confirmed||0;totals.inferred+=r.inferred||0;
     totals.unmatched+=r.ambiguous||0;
     totals.waiting+=r.pending||0;
     for(const [key,count] of Object.entries(r.reasons||{}))totals.reasons[key]=(totals.reasons[key]||0)+count;
   });
   const reason=Object.entries(totals.reasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>`${k.replace(/-/g,' ')}: ${v}`).join(' · ');
-  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates · ${totals.confirmed} matched · ${totals.unmatched} unmatched · ${totals.waiting} not scored${reason?' · '+esc(reason):''}</span></div>`;
+  return `<div class="h2h-manual-toolbar"><span>GAME PICK MODE · completed-game estimates · ${totals.confirmed} matched (${totals.inferred} date-inferred) · ${totals.unmatched} unmatched · ${totals.waiting} not scored${reason?' · '+esc(reason):''}</span></div>`;
 }
 function h2hVerifiedCurrentScore(row){
   // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
@@ -1143,7 +1146,7 @@ function buildHeadToHeadMatchup(group,bundle,week,mode){
   return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:keyMatchupPlayer(idA,rowA),keyB:keyMatchupPlayer(idB,rowB),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hProjectionHTML(value){return Number.isFinite(value)?`<span class="h2h-sleeper-projection"><small>PROJECTED FINISH</small><b>${value.toFixed(1)}</b></span>`:''}
-function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED-GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>AWAITING VERIFIED GAMES</small><b>—</b></span>`}
+function h2hScoreHTML(score){return Number.isFinite(score)?`<span class="h2h-current-score"><small>COMPLETED-GAME EST.</small><b>${score.toFixed(2)}</b></span>`:`<span class="h2h-current-score"><small>AWAITING COMPLETED GAMES</small><b>—</b></span>`}
 function h2hFeaturedTeamHTML(managerId,odds,form,side,projection,score=null){
   return `<div class="h2h-featured-team ${side}"><span class="h2h-featured-avatar">${h2hManagerAvatar(managerId)}</span><button type="button" class="manager-profile-link" data-manager-id="${esc(managerId)}">${esc(managerName(managerId))}</button>${h2hScoreHTML(score)}<strong class="h2h-matchup-odds">$${Number.isFinite(odds)?odds.toFixed(2):'—'}</strong>${h2hProjectionHTML(projection)}${h2hFormHTML(form)}</div>`
 }

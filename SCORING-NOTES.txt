@@ -1,0 +1,1 @@
+V4.0.37: fixes the 32h date-only eligibility cutoff that prevented all completed-game attribution. Date inferred matches are estimates: Sleeper public stats do not independently certify game completion or game selection. Do not treat these totals as official. Review Head-to-Head diagnostics for remaining mismatches.
