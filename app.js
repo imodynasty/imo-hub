@@ -987,6 +987,16 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
   let exact;
   try{exact=h2hRemainingProjection(row,bundle);if(exact.available)return {...exact,estimated:false,method:'remaining starters'}}catch(_){ }
   const current=h2hVerifiedCurrentScore(row),starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0'),pregame=Number(managerPreGameProjection(managerId,bundle,week))||220;
+  // If player-level totals disagree with Sleeper's official live team score,
+  // do not use those player totals to calculate remaining projections.
+  const playerSum=starters.reduce((sum,id,index)=>{
+    const raw=Array.isArray(row?.starters_points)?row.starters_points[index]:row?.players_points?.[id];
+    return sum+(Number.isFinite(Number(raw))&&raw!==null&&raw!==''?Number(raw):0);
+  },0);
+  if(Math.abs(playerSum-current)>.11){
+    const total=mode==='live'?liveWeightedProjection(current,pregame):Math.max(current,pregame);
+    return {available:true,estimated:true,method:'official Sleeper score + team projection',total:Math.max(current,Number(total)||current),current,remainingProjection:null,counted:null,starters:starters.length,remaining:null};
+  }
   let scored=0,counted=0,remainingProjection=0;
   starters.forEach((id,index)=>{
     const raw=Array.isArray(row.starters_points)?row.starters_points[index]:row.players_points?.[id],value=raw!==null&&raw!==undefined&&raw!==''?Number(raw):NaN;
@@ -1000,17 +1010,18 @@ function h2hMarketProjection(row,bundle,managerId,week,mode){
   return {available:true,estimated:true,method:'team projection fallback',total:Number.isFinite(total)?total:Math.max(current,220),current,remainingProjection:null,counted:null,starters:starters.length,remaining:null}
 }
 function h2hVerifiedCurrentScore(row){
-  const starters=safeArray(row?.starters).map(String).filter(id=>id&&id!=='0');
-  if(!starters.length)return 0;
-  const values=starters.map((id,index)=>{
-    const raw=Array.isArray(row?.starters_points)?row.starters_points[index]:row?.players_points?.[id];
-    return raw===null||raw===undefined||raw===''?NaN:Number(raw);
-  });
-  const valid=values.filter(Number.isFinite);
-  if(!valid.length)return 0;
-  // Do not substitute the unverified team total for player-level points.
-  return Math.round(valid.reduce((sum,value)=>sum+value,0)*100)/100;
+  // Sleeper's matchup `points` is the authoritative LIVE team total. In NBA
+  // pick-a-game leagues, starters_points/players_points can contain values
+  // from games that were not selected for this week's matchup. Summing them
+  // produces inflated scores (including scores for teams with no game yet).
+  // Crucially, `points` also includes partial scores from games in progress.
+  const live=row?.points;
+  if(live!==null&&live!==undefined&&live!==''&&Number.isFinite(Number(live)))
+    return Math.round(Number(live)*100)/100;
+  // Never substitute starter arrays or projections for missing live data.
+  return 0;
 }
+
 function buildHeadToHeadMatchup(group,bundle,week,mode){
   const rowA=group[0],rowB=group[1],idA=String(bundle.ownerByRoster?.[String(rowA.roster_id)]||''),idB=String(bundle.ownerByRoster?.[String(rowB.roster_id)]||''),currentA=h2hVerifiedCurrentScore(rowA),currentB=h2hVerifiedCurrentScore(rowB);
   const liveA=h2hMarketProjection(rowA,bundle,idA,week,mode),liveB=h2hMarketProjection(rowB,bundle,idB,week,mode),available=true;
