@@ -1,0 +1,6 @@
+V4.0.44 — Selected player records
+- This-season selected-player record now uses the same current-week authenticated Sleeper starters_games selection ledger as Head-to-Head, rather than historical matchup rows alone.
+- Records fetch shared selections even if Head-to-Head was never opened, then load selected players’ game logs.
+- Live refresh updates the selected-game records where available.
+- Removed “highest verified so far” from selected-player record display.
+- Preserved all scoring and Cloudflare Worker integrations.
