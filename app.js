@@ -2787,13 +2787,13 @@ function managerProfileOverviewPanelHTML(managerId){
   const statGrid=`<div class="manager-profile-stat-grid"><div><span>Power rank</span><strong class="power-rank-with-move">${power?`#${power.rank}`:"—"}${power&&powerMovement.move?` <em class="rank-move ${powerMovement.move>0?'up':'down'}">${powerMovement.move>0?'↑':'↓'}${Math.abs(powerMovement.move)}</em>`:""}</strong></div><div><span>Ladder</span><strong>${power?`#${power.standingRank}`:"—"}</strong></div><div><span>Record</span><strong>${form.games?`${form.wins}-${form.games-form.wins}`:"—"}</strong></div><div><span>Championship odds</span><strong>${odds?championshipOddsLabel(odds):"—"}</strong></div><div><span>Team average age</span><strong>${avgAge?avgAge.toFixed(1):"—"}</strong></div></div>`;
   return `<section class="manager-profile-tab-panel active" data-manager-tab-panel="overview">${statGrid}<div class="manager-profile-grid">${gmProfileHTML(gm)}<section class="manager-profile-card profile-form-guide-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">FORM GUIDE</span><h3>Last Five</h3></div></div><div class="profile-form-strip interactive">${formPills}</div></section><section class="manager-profile-card profile-power-trend-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">SEASON JOURNEY</span><h3>Power Ranking Trend</h3></div><span class="period-pill">Week by week</span></div>${powerTrendHTML(id)}</section></div></section>`
 }
-function managerProfileRosterPanelHTML(managerId){
+function managerProfileRosterPanelHTML(managerId,deferChemistry=false){
   const id=String(managerId),roster=managerRosterPlayers(id,state.profileAverageSeason),teamForm=teamFormPlayers(id),perMinuteMonsters=managerPerMinuteMonstersHTML(id,state.profileAverageSeason);
   const rosterRow=(p,i)=>`<div class="profile-roster-row"><span class="profile-roster-rank">${i+1}</span><span class="player-avatar-wrap"><img src="${esc(p.avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="player-avatar-fallback">${esc(p.name.split(/\s+/).map(x=>x[0]).slice(0,2).join(""))}</span></span><div>${playerLink(p.id,p.name,"profile-player-name")}<small>${esc(p.position)}${p.age?` · Age ${p.age}`:""}</small></div><b class="profile-player-average">${p.avg.toFixed(2)}${p.avgRank?` <small>#${p.avgRank}</small>`:""}</b></div>`;
   const topRoster=roster.slice(0,5).map(rosterRow).join(""),remainingRoster=roster.slice(5).map((p,i)=>rosterRow(p,i+5)).join("");
   const rosterRows=topRoster+(remainingRoster?`<details class="profile-roster-more"><summary><span class="profile-roster-expand-label">Show remaining ${roster.length-5} players</span><span class="profile-roster-collapse-label">Show top 5</span></summary><div class="profile-roster-list">${remainingRoster}</div></details>`:'')||'<div class="profile-empty">No current roster data.</div>';
   const seasonButtons=profileSeasonKeys().map(season=>`<button type="button" class="${state.profileAverageSeason===season?"active":""}" data-profile-season="${esc(season)}">${esc(seasonLabel(season))} averages</button>`).join('');
-  return `<section class="manager-profile-tab-panel" data-manager-tab-panel="roster"><div class="manager-profile-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster</h3></div><div class="roster-season-toggle">${seasonButtons}</div></div><div class="profile-roster-list">${rosterRows}</div></section>${teamChemistryHTML(id)}${managerDraftPicksHTML(id)}<section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Poor Form</h3></div></div>${playerFormMini(teamForm.poor,false)}</section><section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Good Form</h3></div></div>${playerFormMini(teamForm.good,true)}</section>${perMinuteMonsters}</div></section>`
+  return `<section class="manager-profile-tab-panel" data-manager-tab-panel="roster"><div class="manager-profile-grid"><section class="manager-profile-card profile-roster-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">CURRENT TEAM</span><h3>Roster</h3></div><div class="roster-season-toggle">${seasonButtons}</div></div><div class="profile-roster-list">${rosterRows}</div></section>${deferChemistry?`<section class="manager-profile-card team-chemistry-card" data-team-chemistry><div class="manager-profile-card-heading"><div><span class="eyebrow">LINEUP DECISION-MAKING</span><h3>Team Chemistry</h3></div></div><div class="team-chemistry-empty">Calculating Chemistry…</div></section>`:teamChemistryHTML(id)}${managerDraftPicksHTML(id)}<section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Poor Form</h3></div></div>${playerFormMini(teamForm.poor,false)}</section><section class="manager-profile-card"><div class="manager-profile-card-heading"><div><span class="eyebrow">LAST FIVE WATCH</span><h3>Good Form</h3></div></div>${playerFormMini(teamForm.good,true)}</section>${perMinuteMonsters}</div></section>`
 }
 function managerProfileFrontOfficePanelHTML(managerId){
   const id=String(managerId),trades=managerTrades(id),recent=trades.slice(0,5),partners=favouriteTradePartners(id),gm=managerGMProfile(id),managerGrades=managerGradesHTML(id),tradeLedger=managerTradeLedgerHTML(id),potentialTradeTargets=potentialTradeTargetsHTML(id,gm),rookieDraftTargets=rookieDraftTargetsHTML(id);
@@ -3437,7 +3437,7 @@ function readManagerProfileTabCache(managerId,tab){
   try{
     const raw=localStorage.getItem(managerProfileTabPersistentKey(managerId,tab));if(!raw)return null;
     const entry=JSON.parse(raw),expected=managerProfileCoreFingerprint(managerId);
-    if(!entry?.html||Date.now()-Number(entry.savedAt||0)>60000||entry.fingerprint!==expected)return null;
+    if(!entry?.html||Date.now()-Number(entry.savedAt||0)>300000||entry.fingerprint!==expected)return null;
     return entry.html
   }catch(_){return null}
 }
@@ -3464,16 +3464,18 @@ function parseManagerProfileCache(raw){
   return null
 }
 function readManagerProfileCachedHTML(key,managerId=null){
-  if(state.profileHTMLCache.has(key))return state.profileHTMLCache.get(key);
   const expected=managerId!=null?managerProfileCoreFingerprint(managerId):'';
+  const memory=state.profileHTMLCache.get(key);
+  if(memory&&typeof memory==='object'&&memory.html&&Date.now()-memory.savedAt<300000&&(!expected||memory.fingerprint===expected))return memory.html;
+  if(typeof memory==='string')state.profileHTMLCache.delete(key);
   for(const storage of [sessionStorage,localStorage]){
     try{
       const storageKey=storage===sessionStorage?managerProfileSessionKey(key):managerProfilePersistentKey(key),entry=parseManagerProfileCache(storage.getItem(storageKey));
-      if(!entry?.html||Date.now()-Number(entry.savedAt||0)>60000)continue;
+      if(!entry?.html||Date.now()-Number(entry.savedAt||0)>300000)continue;
       // If the current roster has changed, do not reuse an old profile. Otherwise
       // allow the last known profile to paint immediately, even before history has loaded.
       if(expected&&entry.fingerprint&&entry.fingerprint!==expected)continue;
-      state.profileHTMLCache.set(key,entry.html);
+      state.profileHTMLCache.set(key,{html:entry.html,savedAt:Number(entry.savedAt),fingerprint:entry.fingerprint});
       if(storage===localStorage){try{sessionStorage.setItem(managerProfileSessionKey(key),JSON.stringify(entry))}catch(_){ }}
       return entry.html
     }catch(_){ }
@@ -3482,8 +3484,9 @@ function readManagerProfileCachedHTML(key,managerId=null){
 }
 function writeManagerProfileCachedHTML(key,managerId,html){
   if(!html)return;
-  state.profileHTMLCache.set(key,html);
-  const entry=JSON.stringify({html,savedAt:Date.now(),fingerprint:managerProfileCoreFingerprint(managerId)});
+  const savedAt=Date.now(),fingerprint=managerProfileCoreFingerprint(managerId);
+  state.profileHTMLCache.set(key,{html,savedAt,fingerprint});
+  const entry=JSON.stringify({html,savedAt,fingerprint});
   try{sessionStorage.setItem(managerProfileSessionKey(key),entry)}catch(_){ }
   try{localStorage.setItem(managerProfilePersistentKey(key),entry)}catch(_){ }
 }
@@ -3529,15 +3532,49 @@ function hydrateManagerProfileSection(managerId,tab){
 }
 
 function buildManagerProfileTab(managerId,tab){
-  const id=String(managerId||''),section=String(tab||'overview'),cacheKey=`tab-build|${id}|${section}|${String(state.profileAverageSeason||'')}`;
+  const id=String(managerId||''),section=String(tab||'overview'),cacheKey=`tab-build|${id}|${section}|${String(state.profileAverageSeason||'')}|${String(state.profileChemistryView||'all')}`;
   if(!id)return Promise.resolve('');
   const cached=readManagerProfileTabCache(id,section);if(cached)return Promise.resolve(cached);
   if(state.profileBuilds.has(cacheKey))return state.profileBuilds.get(cacheKey);
-  const priority=state.profilePriorityPromise||Promise.resolve();
+  // Paint the visible panel first; never hold Roster behind dozens of remote game logs.
+  // Chemistry is explicitly a pending placeholder until the background stage completes.
+  if(section==='roster'){
+    const first=Promise.resolve().then(()=>new Promise(resolve=>requestAnimationFrame(()=>{
+      try{resolve(managerProfileRosterPanelHTML(id,true))}catch(error){console.error('Roster paint failed',error);resolve(managerProfileTabPanelHTML(id,'roster'))}
+    })));
+    state.profileBuilds.set(cacheKey,first);
+    first.finally(()=>state.profileBuilds.delete(cacheKey));
+    // Defer the expensive stage until the browser has painted the initial roster.
+    first.then(()=>setTimeout(()=>{
+      const season=String(state.profileAverageSeason||currentSeasonKey()),view=String(state.profileChemistryView||'all');
+      const rosterIds=safeArray(state.managers.get(id)?.roster?.players).map(String);
+      const hydrationKey=`roster-hydration|${id}|${season}|${view}`;
+      if(state.profileBuilds.has(hydrationKey))return;
+      const job=(async()=>{
+        await ensurePlayerEfficiencyData(rosterIds,season);
+        await ensureManagerRosterGameLogs(id);
+        if(view==='all')await ensureOlderHistoryLoaded();
+        await ensureManagerChemistryGameLogs(id,view);
+        // If user switched managers/seasons during hydration, don't touch their current panel.
+        if(String(state.profileAverageSeason||currentSeasonKey())!==season||String(state.profileChemistryView||'all')!==view)return;
+        const html=managerProfileRosterPanelHTML(id,false);
+        writeManagerProfileTabCache(id,'roster',html);
+        const modal=$('managerProfileModal'),content=$('managerProfileContent');
+        if(modal?.classList.contains('open')&&modal.dataset.managerId===id){
+          const panel=content?.querySelector('[data-manager-tab-panel="roster"]');
+          if(panel){panel.outerHTML=html;bindSparklineTooltips(content);setManagerProfileTab(modal.dataset.activeTab||'roster',false)}
+        }
+      })().catch(error=>console.warn('Deferred roster metrics unavailable',error)).finally(()=>state.profileBuilds.delete(hydrationKey));
+      state.profileBuilds.set(hydrationKey,job);
+    },80));
+    return first;
+  }
+  const priority=section==='history'?(state.profilePriorityPromise||Promise.resolve()):Promise.resolve();
   const historyNeed=section==='history'?ensureOlderHistoryLoaded():Promise.resolve();
-  const rosterNeed=section==='roster'?(state.profileChemistryView==='all'?ensureOlderHistoryLoaded().then(()=>Promise.allSettled([ensurePlayerEfficiencyData(safeArray(state.managers.get(id)?.roster?.players).map(String),String(state.profileAverageSeason||currentSeasonKey())),ensureManagerRosterGameLogs(id).then(()=>ensureManagerChemistryGameLogs(id,'all'))])):Promise.allSettled([ensurePlayerEfficiencyData(safeArray(state.managers.get(id)?.roster?.players).map(String),String(state.profileAverageSeason||currentSeasonKey())),ensureManagerRosterGameLogs(id).then(()=>ensureManagerChemistryGameLogs(id,'season'))])):Promise.resolve();
-  const build=Promise.allSettled([priority,historyNeed,rosterNeed]).then(()=>new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{try{const html=managerProfileTabPanelHTML(id,section);writeManagerProfileTabCache(id,section,html);resolve(html)}catch(error){reject(error)}},0)))).finally(()=>state.profileBuilds.delete(cacheKey));
-  state.profileBuilds.set(cacheKey,build);return build
+  const build=Promise.allSettled([priority,historyNeed]).then(()=>new Promise((resolve,reject)=>requestAnimationFrame(()=>setTimeout(()=>{
+    try{const html=managerProfileTabPanelHTML(id,section);writeManagerProfileTabCache(id,section,html);resolve(html)}catch(error){reject(error)}
+  },0)))).finally(()=>state.profileBuilds.delete(cacheKey));
+  state.profileBuilds.set(cacheKey,build);return build;
 }
 async function preloadManagerProfileSectionsSequential(managerId){
   const id=String(managerId||'');if(!id)return false;
@@ -3591,7 +3628,7 @@ async function openManagerProfile(managerId,pushState=true){
   // V3.3.77: manager work is intentionally serial, not concurrent. Front Office
   // prepares after the visible Overview; Roster prepares after Front Office.
   // History/H2H is never calculated until the user explicitly opens History.
-  requestAnimationFrame(()=>setTimeout(()=>preloadManagerProfileSectionsSequential(id),0));
+  // V4.0.45: Only requested manager tab loads; no competing Roster/Front Office prewarm.
   const requestedTab=!pushState?(managerProfileTabFromHash()||'overview'):'overview';
   if(requestedTab!=='overview')requestAnimationFrame(()=>ensureManagerFullProfileForTab(id,requestedTab));
   if(pushState)history.pushState({managerProfile:id,tab:'overview'},'',`#manager=${encodeURIComponent(id)}&tab=overview`);
@@ -4232,7 +4269,15 @@ function sleeperWeeklyGameRows(payload){
   };
   walk(payload,null);return out;
 }
+const imoGameLogInFlight=new Map();
 async function loadPlayerGameLogAverage(playerId,season,scoring){
+  const flightKey=String(season)+'|'+String(playerId);
+  if(imoGameLogInFlight.has(flightKey))return imoGameLogInFlight.get(flightKey);
+  const request=loadPlayerGameLogAverageUnshared(playerId,season,scoring).finally(()=>imoGameLogInFlight.delete(flightKey));
+  imoGameLogInFlight.set(flightKey,request);
+  return request;
+}
+async function loadPlayerGameLogAverageUnshared(playerId,season,scoring){
   // IMPORTANT: for Sleeper NBA history, `grouping=game` returns a season-level
   // aggregate. `grouping=week` exposes the individual NBA games inside each
   // fantasy-week bucket, which is exactly what Team Chemistry needs.

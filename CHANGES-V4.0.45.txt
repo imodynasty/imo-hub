@@ -1,0 +1,8 @@
+IMO Dynasty V4.0.45 — Manager Profile Performance
+
+- Active tab receives loading priority; disable automatic Front Office and Roster prewarming.
+- Profile shell and tab caches now persist for five minutes with fingerprint-based invalidation.
+- Concurrent requests for the same player-season game logs share one in-flight request.
+- Roster paints immediately from available data and displays Chemistry loading placeholder while historical game logs hydrate; then updates in place.
+- History is fetched only when History is opened.
+- Live Head-to-Head scoring and selection syncing remain unchanged.
