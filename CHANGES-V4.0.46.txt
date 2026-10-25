@@ -1,0 +1,8 @@
+IMO Dynasty V4.0.46 — Live H2H Odds Recalibration
+
+- Championship Odds remain calculated from completed weeks; no changes to that model.
+- Live H2H odds now incorporate actual live scores and the selected games remaining for both teams.
+- If a team is trailing with no remaining players while the other team already leads, the display moves to $21.00 versus $1.05.
+- If both teams are finished, the winner is strongly favoured; tied results remain neutral.
+- Where live scores or reliable remaining counts are unavailable, H2H odds retain the previous projection-based fallback.
+- Live odds remain indicative estimates, not actual bookmaker markets.

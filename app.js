@@ -824,6 +824,32 @@ function matchupOdds(a,b){
   const weightA=Math.pow(baseA,1.15),weightB=Math.pow(baseB,1.15),pa=weightA/(weightA+weightB),pb=1-pa,marketPa=Math.min(.999,pa*CONFIG.h2hHouseMargin),marketPb=Math.min(.999,pb*CONFIG.h2hHouseMargin);
   return{a:roundOdds05(1/Math.max(.001,marketPa)),b:roundOdds05(1/Math.max(.001,marketPb)),pa,pb,marketPa,marketPb}
 }
+// V4.0.46: LIVE Head-to-Head pricing is separate from weekly Championship Odds.
+// Use points already scored plus the number of selected games yet to finish.
+// Never treat a historic projected finish as more important than a completed result.
+function h2hLiveMatchupOdds(scoreA,scoreB,remainingA,remainingB,pregameA=220,pregameB=220){
+  if(![scoreA,scoreB,remainingA,remainingB].every(Number.isFinite))return null;
+  const ra=Math.max(0,Math.min(10,Math.floor(remainingA))),rb=Math.max(0,Math.min(10,Math.floor(remainingB)));
+  const decisive=()=>({a:1.05,b:21,pa:.98,pb:.02,marketPa:1/1.05,marketPb:1/21});
+  if(ra===0&&rb===0){
+    if(scoreA===scoreB)return {a:2,b:2,pa:.5,pb:.5};
+    const resolved=decisive();return scoreA>scoreB?resolved:{...resolved,a:21,b:1.05,pa:.02,pb:.98};
+  }
+  // A side that has finished cannot overcome a deficit against a side
+  // already leading, regardless of the latter's remaining selections.
+  if(rb===0&&scoreA>scoreB){return decisive()}
+  if(ra===0&&scoreB>scoreA){const d=decisive();return {...d,a:21,b:1.05,pa:.02,pb:.98}}
+  // Average starter projection is bounded so unusual historical team averages
+  // cannot dominate the live score. Unfinished picks may be underway already.
+  const perA=Math.max(12,Math.min(35,(Number(pregameA)||220)/10))*.85;
+  const perB=Math.max(12,Math.min(35,(Number(pregameB)||220)/10))*.85;
+  const projectedDiff=scoreA+ra*perA-(scoreB+rb*perB);
+  const spread=Math.max(9,19*Math.sqrt(ra+rb));
+  const winA=1/(1+Math.exp(-Math.max(-30,Math.min(30,projectedDiff/spread*1.7))));
+  const pa=Math.max(.02,Math.min(.98,winA)),pb=1-pa;
+  // Indicative odds, not betting markets. Cap at $21 / floor $1.05.
+  return {a:Math.min(21,roundOdds05(1/Math.min(.95238,pa*CONFIG.h2hHouseMargin))),b:Math.min(21,roundOdds05(1/Math.min(.95238,pb*CONFIG.h2hHouseMargin))),pa,pb};
+}
 function managerFormBadges(managerId,bundle,beforeWeek){
   let games=(outcomesForBundle(bundle,Number(beforeWeek)-1)[String(managerId)]||[]);
   if(!games.length&&state.modelBundle&&state.modelBundle!==bundle)games=(outcomesForBundle(state.modelBundle)[String(managerId)]||[]);
@@ -1243,7 +1269,12 @@ function buildHeadToHeadMatchup(group,bundle,week,mode){
       live.estimated=true;
     }else{live.current=null;live.counted=null;live.remainingProjection=null;live.estimated=true}
   }
-  const finishA=liveA.total??currentA,finishB=liveB.total??currentB,odds=available?matchupOdds(finishA,finishB):{a:null,b:null},difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
+  const finishA=liveA.total??currentA,finishB=liveB.total??currentB;
+  const recordA=h2hAutoScore(rowA,bundle,week),recordB=h2hAutoScore(rowB,bundle,week);
+  const remainingA=recordA?.checked?Number(recordA.remaining):NaN,remainingB=recordB?.checked?Number(recordB.remaining):NaN;
+  const liveOdds=Number.isFinite(currentA)&&Number.isFinite(currentB)?h2hLiveMatchupOdds(currentA,currentB,remainingA,remainingB,managerPreGameProjection(idA,bundle,week),managerPreGameProjection(idB,bundle,week)):null;
+  const odds=liveOdds||matchupOdds(finishA,finishB);
+  const difference=Math.abs(finishA-finishB),line=available?Math.floor(difference)+.5:0,favouriteA=finishA>=finishB;
   return{rowA,rowB,idA,idB,currentA,currentB,liveA,liveB,oddsAvailable:available,finishA,finishB,sleeperProjectionA:available?finishA:null,sleeperProjectionB:available?finishB:null,odds,line,favouriteA,keyA:h2hMainEventPlayer(idA,bundle,week),keyB:h2hMainEventPlayer(idB,bundle,week),formA:managerFormBadges(idA,bundle,week),formB:managerFormBadges(idB,bundle,week),injuriesA:h2hOutPlayers(idA),injuriesB:h2hOutPlayers(idB)}
 }
 function h2hPlayersRemainingHTML(row,bundle,week){
