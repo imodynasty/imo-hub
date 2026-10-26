@@ -1,0 +1,13 @@
+IMO Dynasty V4.0.49 — Weekly Team Record Accuracy
+
+FIX: Current-season highest weekly team score no longer uses Sleeper public NBA matchup points / starters_points, which can include unselected games (e.g. 307.50 instead of the actual 247.00).
+
+For Week 1 only, while every roster has exactly one completed matchup, the app uses Sleeper roster cumulative points-for as the authoritative Week 1 total. In the supplied screenshot, The Wembeatles lead with 261.50; OnlyFranz Premium have 247.00.
+
+For later completed weeks, the app loads authenticated historical game selections from the existing Cloudflare Worker and scores the exact selected NBA games using league scoring settings. Only a complete, validated 8-roster week is accepted; verified weekly results are cached locally. If any completed week is unverified, record cards show a verification notice rather than an incorrect high score.
+
+The same verified source is now used for team franchise-high score cards and for current-season inputs to league records / winning margin. Historical archive records are unchanged.
+
+Cache-busting app.js URL bumped to 4.0.49. No changes to Cloudflare Worker or secrets required.
+
+Note: Historical weekly verification depends on the existing Worker retaining each week's selected-game ledger and Sleeper returning game logs. If verification fails, records intentionally remain unavailable rather than showing unselected-game totals.

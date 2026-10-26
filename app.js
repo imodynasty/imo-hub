@@ -1,4 +1,4 @@
-/* IMO DYNASTY V3.3.80 — Immediate Ticker Motion */
+/* IMO DYNASTY V4.0.49 — Verified Weekly Team Score Records */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -1415,9 +1415,105 @@ function renderFormList(targetId,rows,positive){const target=$(targetId);target.
 function renderPlayerForm(){const form=recentPlayerForm();renderFormList("poorForm",form.poor,false);renderFormList("goodForm",form.good,true);if(Object.keys(state.gameLogs?.[currentSeasonKey()]||{}).length)void ensureLastFiveCarryoverLogs()}
 function managerTradeCounts(trades){const c={};trades.forEach(t=>mids(t).forEach(id=>c[id]=(c[id]||0)+1));return c}
 function topEntry(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1])[0]}
+// V4.0.49: The public Sleeper NBA matchup row can include NON-selected
+// games (e.g. 307.50 instead of the 247.00 shown in Sleeper). NEVER use
+// public points or starters_points for current-season weekly team records.
+const VERIFIED_WEEKLY_TEAM_RECORDS_KEY='imo-verified-weekly-team-records-v449';
+let verifiedWeeklyTeamScores={},weeklyRecordAuditPromise=null,weeklyRecordAuditLastAttempt=0;
+try{verifiedWeeklyTeamScores=JSON.parse(localStorage.getItem(VERIFIED_WEEKLY_TEAM_RECORDS_KEY)||'{}')||{}}catch(_){verifiedWeeklyTeamScores={}}
+function verifiedTeamRecordKey(bundle,week){return `${bundle?.league?.league_id}:${bundle?.league?.season}:${week}`}
+function storeVerifiedTeamWeek(bundle,week,rows,source){
+  if(rows.length!==safeArray(bundle?.rosters).length||!rows.length||rows.some(r=>!Number.isFinite(r.points)||r.points<0))return false;
+  const rosterIds=new Set(rows.map(r=>String(r.roster_id)));
+  if(rosterIds.size!==rows.length||safeArray(bundle.rosters).some(r=>!rosterIds.has(String(r.roster_id))))return false;
+  verifiedWeeklyTeamScores[verifiedTeamRecordKey(bundle,week)]={source,verifiedAt:Date.now(),rows:rows.map(r=>({roster_id:r.roster_id,matchup_id:r.matchup_id,points:r.points,week:Number(week)}))};
+  try{localStorage.setItem(VERIFIED_WEEKLY_TEAM_RECORDS_KEY,JSON.stringify(verifiedWeeklyTeamScores))}catch(_){ }
+  return true;
+}
+function snapshotSleeperWeekOne(bundle){
+  const weeks=completedRankingWeeks(bundle);
+  if(weeks.length!==1||weeks[0]!==1)return;
+  const rosters=safeArray(bundle?.rosters),rows=safeArray(bundle?.matchups).filter(r=>Number(r.week)===1);
+  // Sleeper's cumulative points-for is an EXACT Week 1 score only while
+  // every roster has played precisely one game. Never extrapolate it later.
+  if(!rosters.length||rows.length!==rosters.length||rosters.some(r=>{
+    const settings=r.settings||{};
+    return Number(settings.wins||0)+Number(settings.losses||0)+Number(settings.ties||0)!==1||!Number.isFinite(Number(settings.fpts));
+  }))return;
+  const rowByRoster=new Map(rows.map(r=>[String(r.roster_id),r]));
+  const scores=rosters.map(r=>{
+    const row=rowByRoster.get(String(r.roster_id)),settings=r.settings;
+    return {roster_id:r.roster_id,matchup_id:row?.matchup_id,points:Math.round((Number(settings.fpts)+(Number(settings.fpts_decimal)||0)/100)*100)/100};
+  });
+  if(scores.some(r=>r.matchup_id==null))return;
+  storeVerifiedTeamWeek(bundle,1,scores,'sleeper-roster-week-1');
+}
+function currentSeasonTeamRecordsComplete(bundle){
+  if(String(bundle?.league?.league_id)!==String(CONFIG.currentLeagueId))return true;
+  snapshotSleeperWeekOne(bundle);
+  const weeks=completedRankingWeeks(bundle);
+  return weeks.every(week=>safeArray(verifiedWeeklyTeamScores[verifiedTeamRecordKey(bundle,week)]?.rows).length===safeArray(bundle?.rosters).length);
+}
 function teamRecordRows(bundle){
-  const archived=archivedMatchupRowsForBundle(bundle),completed=new Set(completedRankingWeeks(bundle));
-  return (archived||safeArray(bundle?.matchups)).filter(row=>row.matchup_id!=null&&completed.has(Number(row.week))).map(row=>({...row,recordPoints:archived?Number(row.points):canonicalMatchupScore(row)})).filter(row=>Number.isFinite(row.recordPoints)&&row.recordPoints>0)
+  const completed=new Set(completedRankingWeeks(bundle));
+  if(String(bundle?.league?.league_id)===String(CONFIG.currentLeagueId)){
+    snapshotSleeperWeekOne(bundle);
+    // A missing week is NOT permission to fall back to inflated public points.
+    if(!currentSeasonTeamRecordsComplete(bundle))return [];
+    return [...completed].flatMap(week=>safeArray(verifiedWeeklyTeamScores[verifiedTeamRecordKey(bundle,week)]?.rows))
+      .map(row=>({...row,recordPoints:Number(row.points)})).filter(row=>Number.isFinite(row.recordPoints)&&row.recordPoints>=0);
+  }
+  const archived=archivedMatchupRowsForBundle(bundle);
+  return (archived||safeArray(bundle?.matchups)).filter(row=>row.matchup_id!=null&&completed.has(Number(row.week)))
+    .map(row=>({...row,recordPoints:archived?Number(row.points):canonicalMatchupScore(row)}))
+    .filter(row=>Number.isFinite(row.recordPoints)&&row.recordPoints>0);
+}
+async function ensureVerifiedWeeklyTeamRecords(){
+  const bundle=currentLeagueBundle();if(!bundle||weeklyRecordAuditPromise)return weeklyRecordAuditPromise;
+  snapshotSleeperWeekOne(bundle);
+  if(currentSeasonTeamRecordsComplete(bundle))return;
+  const base=String(window.IMO_SELECTIONS_FEED_URL||'').trim().replace(/\/$/,'');
+  if(!base||Date.now()-weeklyRecordAuditLastAttempt<120000)return;
+  weeklyRecordAuditLastAttempt=Date.now();
+  const weeks=completedRankingWeeks(bundle).filter(w=>!verifiedWeeklyTeamScores[verifiedTeamRecordKey(bundle,w)]);
+  const season=String(bundle.league?.season||''),scoring=bundle.league?.scoring_settings||{};
+  weeklyRecordAuditPromise=(async()=>{
+    for(const week of weeks){
+      try{
+        // Historical weekly selections remain stored by the private Worker.
+        const response=await fetch(`${base}/selections?league_id=${encodeURIComponent(CONFIG.currentLeagueId)}&week=${week}`,{cache:'no-store'});
+        if(!response.ok)throw Error(`Selections unavailable: HTTP ${response.status}`);
+        const payload=await response.json();
+        if(String(payload.league_id)!==String(CONFIG.currentLeagueId)||Number(payload.week)!==week||safeArray(payload.rows).length!==safeArray(bundle.rosters).length)throw Error('Incomplete authenticated selection ledger');
+        const ids=[...new Set(payload.rows.flatMap(row=>safeArray(row.starters).map(String)))];
+        state.gameLogs[season]??={};
+        await limitedMap(ids.filter(id=>!safeArray(state.gameLogs[season][id]).length),5,async id=>{
+          try{const data=await loadPlayerGameLogAverage(id,season,scoring);if(data?.rows)state.gameLogs[season][id]=data.rows}catch(_){ }
+        });
+        const matchupByRoster=new Map(safeArray(bundle.matchups).filter(r=>Number(r.week)===week).map(r=>[String(r.roster_id),r]));
+        const verified=[];
+        for(const row of payload.rows){
+          const starters=safeArray(row.starters).map(String),games=row.starters_games||{};
+          if(starters.length!==10||!matchupByRoster.has(String(row.roster_id)))break;
+          let score=0,complete=true;
+          for(const id of starters){
+            const target=String(games[id]||''),game=safeArray(state.gameLogs[season][id]).find(g=>rivalryGameId(g)===target);
+            if(!target||!game){complete=false;break}
+            const status=h2hGameCompletion(game);
+            if(status!=='final'&&status!=='date-inferred'){complete=false;break}
+            if(!gameWasPlayed(game))continue; // Verified DNP = zero points.
+            const pts=rivalryLeagueFantasyPoints(game,scoring);
+            if(!Number.isFinite(pts)){complete=false;break}
+            score+=pts;
+          }
+          if(!complete)break;
+          verified.push({roster_id:row.roster_id,matchup_id:row.matchup_id,points:Math.round(score*100)/100});
+        }
+        if(!storeVerifiedTeamWeek(bundle,week,verified,'authenticated-selected-games'))console.warn('IMO records: incomplete week; no unverified weekly record will be shown',week);
+      }catch(error){console.warn('IMO records: could not verify week',week,error)}
+    }
+  })().finally(()=>{weeklyRecordAuditPromise=null;const target=document.getElementById('leagueRecords');if(target&&state.lazyHomepageModules?.get('leagueRecords')?.rendered)safeRender('league records',renderRecords)});
+  return weeklyRecordAuditPromise;
 }
 function highestTeamScore(bundles){
   let best=null;
@@ -1517,7 +1613,7 @@ function ensureSelectedRecordAudit(){
     safeRender('league records',renderRecords);
   });
 }
-function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const teamEver=highestTeamScore(state.bundles),teamSeason=highestTeamScore([current]),playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const margin=biggestWinningMargin(state.bundles),selectedEver=selectedPlayerRecord(state.bundles),selectedSeason=selectedPlayerRecord([current]);const selectedCard=(label,result)=>[label,result.best?playerName(result.best.id):'—',result.best?`${result.best.pts.toFixed(2)} pts · ${managerName(result.best.owner)} · Week ${result.best.week}, ${result.best.season}`:result.pending?(state.selectedRecordAuditPromise?'Verifying selected game scores…':'Selected game data unavailable'):'No selected-game scores yet','record-gold'];const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['BIGGEST WINNING MARGIN',margin?managerName(margin.owner):'—',margin?`+${margin.margin.toFixed(2)} pts vs ${managerName(margin.opponent)} · ${margin.winnerScore.toFixed(2)}–${margin.loserScore.toFixed(2)} · Week ${margin.week}, ${margin.season}`:'No completed results','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(2)} pts · Week ${teamEver.week}, ${teamEver.season}`:'No data','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(2)} pts · Week ${teamSeason.week}`:'Season not started','record-blue'],['HIGHEST PLAYER SCORE EVER',playerEver?playerName(playerEver.id):'—',playerEver?`${playerEver.pts.toFixed(2)} pts · Week ${playerEver.week}, ${playerEver.season}`:'No data','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE EVER',selectedEver),['HIGHEST PLAYER SCORE THIS SEASON',playerSeason?playerName(playerSeason.id):'—',playerSeason?`${playerSeason.pts.toFixed(2)} pts · Week ${playerSeason.week}`:'Season not started','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE THIS SEASON',selectedSeason)];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("");const lazy=state.lazyHomepageModules.get('leagueRecords');if(lazy?.rendered)ensureSelectedRecordAudit()}
+function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const currentTeamScoresReady=currentSeasonTeamRecordsComplete(current),teamEver=currentTeamScoresReady?highestTeamScore(state.bundles):null,teamSeason=currentTeamScoresReady?highestTeamScore([current]):null,playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const margin=biggestWinningMargin(state.bundles),selectedEver=selectedPlayerRecord(state.bundles),selectedSeason=selectedPlayerRecord([current]);const selectedCard=(label,result)=>[label,result.best?playerName(result.best.id):'—',result.best?`${result.best.pts.toFixed(2)} pts · ${managerName(result.best.owner)} · Week ${result.best.week}, ${result.best.season}`:result.pending?(state.selectedRecordAuditPromise?'Verifying selected game scores…':'Selected game data unavailable'):'No selected-game scores yet','record-gold'];const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['BIGGEST WINNING MARGIN',margin?managerName(margin.owner):'—',margin?`+${margin.margin.toFixed(2)} pts vs ${managerName(margin.opponent)} · ${margin.winnerScore.toFixed(2)}–${margin.loserScore.toFixed(2)} · Week ${margin.week}, ${margin.season}`:'No completed results','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(2)} pts · Week ${teamEver.week}, ${teamEver.season}`:currentTeamScoresReady?'No data':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(2)} pts · Week ${teamSeason.week}`:currentTeamScoresReady?'Season not started':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST PLAYER SCORE EVER',playerEver?playerName(playerEver.id):'—',playerEver?`${playerEver.pts.toFixed(2)} pts · Week ${playerEver.week}, ${playerEver.season}`:'No data','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE EVER',selectedEver),['HIGHEST PLAYER SCORE THIS SEASON',playerSeason?playerName(playerSeason.id):'—',playerSeason?`${playerSeason.pts.toFixed(2)} pts · Week ${playerSeason.week}`:'Season not started','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE THIS SEASON',selectedSeason)];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("");const lazy=state.lazyHomepageModules.get('leagueRecords');if(lazy?.rendered){ensureSelectedRecordAudit();void ensureVerifiedWeeklyTeamRecords()}}
 
 function safeTradeValue(t){try{const value=Number(tradeValue(t));return Number.isFinite(value)?value:0}catch(error){console.warn("Could not calculate trade value",t?.transaction_id||t?.created,error);return 0}}
 function tradeFallbackHTML(raw,label='Trade details'){
@@ -1931,7 +2027,7 @@ async function downloadManagerShareCard(managerId,button){
   try{const canvas=await buildManagerShareCardCanvas(data);const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('PNG export failed')),'image/png'));const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`imo-dynasty-${fileSafeName(data.name)}-share-card.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);buttons.forEach(btn=>{btn.disabled=false;btn.classList.remove('is-loading','is-error');btn.classList.add('is-success');btn.textContent='✓'});setTimeout(()=>reset(),1600)}catch(error){console.error('Failed to download manager share card',error);buttons.forEach(btn=>{btn.disabled=false;btn.classList.remove('is-loading','is-success');btn.classList.add('is-error');btn.textContent='!'});setTimeout(()=>reset(),1800)}}
 function favouriteTradePartners(id){const all=managerTrades(id),counts={};all.forEach(t=>mids(t).filter(x=>x!==String(id)).forEach(x=>counts[x]=(counts[x]||0)+1));return Object.entries(counts).map(([partner,count])=>({partner,count,percent:all.length?count/all.length*100:0})).sort((a,b)=>b.count-a.count).slice(0,7)}
 function teamFormPlayers(id){const rosterIds=new Set((state.managers.get(String(id))?.roster?.players||[]).map(String)),rows=allGameLogFormRows().filter(x=>rosterIds.has(String(x.id)));return{poor:rows.filter(x=>x.change<0).sort((a,b)=>a.change-b.change).slice(0,3),good:rows.filter(x=>x.change>0).sort((a,b)=>b.change-a.change).slice(0,3)}}
-function teamHighestScore(id,bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>{if(historicalManagerIdForRoster(b,m.roster_id)!==String(id))return;const pts=Number(m.points);if(Number.isFinite(pts)&&(!best||pts>best.pts))best={pts,week:m.week,season:b.league.season}}));return best}
+function teamHighestScore(id,bundles){let best=null;bundles.forEach(b=>teamRecordRows(b).forEach(m=>{if(historicalManagerIdForRoster(b,m.roster_id)!==String(id))return;const pts=Number(m.recordPoints);if(Number.isFinite(pts)&&(!best||pts>best.pts))best={pts,week:m.week,season:b.league.season}}));return best}
 function managerRecentMatchups(id){const bundle=state.modelBundle,rows=matchupRows(bundle),byWeek={};rows.forEach(x=>(byWeek[x.week]??=[]).push(x));const results=[];Object.entries(byWeek).forEach(([week,weekRows])=>{const groups={};weekRows.forEach(x=>{if(x.matchup_id!=null)(groups[x.matchup_id]??=[]).push(x)});Object.values(groups).forEach(g=>{const mine=g.find(x=>String(bundle.ownerByRoster?.[String(x.roster_id)])===String(id)),opp=g.find(x=>x!==mine);if(!mine||!opp)return;const myPts=Number(mine.points),oppPts=Number(opp.points);if(!Number.isFinite(myPts)||!Number.isFinite(oppPts)||(myPts===0&&oppPts===0))return;const oppId=bundle.ownerByRoster?.[String(opp.roster_id)],result=myPts===oppPts?"D":myPts>oppPts?"W":"L";results.push({week:Number(week),result,myPts,oppPts,oppId})})});return results.sort((a,b)=>a.week-b.week).slice(-5)}
 function managerHeadToHead(id){
   const managerId=String(id),records={};
