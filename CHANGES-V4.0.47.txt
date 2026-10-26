@@ -1,0 +1,5 @@
+V4.0.47 — Last Five Watch season carryover
+- Last five individual games now span 2025/26 and 2026/27 (up to five games total).
+- The comparison season average is calculated from 2026/27 game logs.
+- Previous-season game logs load on demand in the background if needed.
+- No changes to live matchup scoring, Cloudflare syncing, or championship odds.

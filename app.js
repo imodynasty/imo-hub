@@ -824,7 +824,7 @@ function matchupOdds(a,b){
   const weightA=Math.pow(baseA,1.15),weightB=Math.pow(baseB,1.15),pa=weightA/(weightA+weightB),pb=1-pa,marketPa=Math.min(.999,pa*CONFIG.h2hHouseMargin),marketPb=Math.min(.999,pb*CONFIG.h2hHouseMargin);
   return{a:roundOdds05(1/Math.max(.001,marketPa)),b:roundOdds05(1/Math.max(.001,marketPb)),pa,pb,marketPa,marketPb}
 }
-// V4.0.46: LIVE Head-to-Head pricing is separate from weekly Championship Odds.
+// V4.0.47: LIVE Head-to-Head pricing is separate from weekly Championship Odds.
 // Use points already scored plus the number of selected games yet to finish.
 // Never treat a historic projected finish as more important than a completed result.
 function h2hLiveMatchupOdds(scoreA,scoreB,remainingA,remainingB,pregameA=220,pregameB=220){
@@ -1360,23 +1360,51 @@ function fallbackSeasonFormRows(){
     return{id,name:playerName(id),priorAvg,recentAvg,change:recentAvg-priorAvg,sourceSeason:fallbackSeason,games:all.length};
   }).filter(Boolean)
 }
+// V4.0.47: Last Five Watch spans seasons. Compare the last five individual
+// NBA games (2025/26 tail + 2026/27 head) against the CURRENT season average.
+// Never substitute a prior-season-only five-game sample for current form.
+function imoPlayedFormGames(playerRows,scoring){
+  return safeArray(playerRows).map(row=>({row,date:gameDateValue(row),fpts:rawFantasyPoints(row,scoring)}))
+    .filter(x=>x.date&&gameWasPlayed(x.row)&&Number.isFinite(x.fpts))
+    .sort((a,b)=>a.date-b.date);
+}
 function allGameLogFormRows(){
-  const preferred=[currentSeasonKey(),previousSeasonKey(),String(state.modelBundle?.league?.season||"")].filter((v,i,a)=>v&&a.indexOf(v)===i);
-  for(const season of preferred){
-    const logs=state.gameLogs?.[season]||{},rows=[];
-    Object.entries(logs).forEach(([id,games])=>{
-      const played=(games||[]).map(row=>({row,date:gameDateValue(row),fpts:rawFantasyPoints(row,state.modelBundle?.league?.scoring_settings||{})})).filter(x=>x.date&&gameWasPlayed(x.row)&&Number.isFinite(x.fpts)).sort((a,b)=>a.date-b.date);
-      if(played.length<5)return;
-      const all=played.map(x=>x.fpts),recent=all.slice(-5),priorAvg=all.reduce((a,b)=>a+b,0)/all.length,recentAvg=recent.reduce((a,b)=>a+b,0)/recent.length;
-      rows.push({id,name:playerName(id),priorAvg,recentAvg,change:recentAvg-priorAvg,sourceSeason:season,games:all.length});
-    });
-    if(rows.length)return rows;
+  const current=currentSeasonKey(),previous=previousSeasonKey();
+  const curLogs=state.gameLogs?.[current]||{},prevLogs=state.gameLogs?.[previous]||{};
+  const curScoring=bundleForSeason(current)?.league?.scoring_settings||state.modelBundle?.league?.scoring_settings||{};
+  const prevScoring=bundleForSeason(previous)?.league?.scoring_settings||curScoring;
+  const rows=[];
+  for(const [id,gameRows] of Object.entries(curLogs)){
+    const currentGames=imoPlayedFormGames(gameRows,curScoring);
+    if(!currentGames.length)continue;
+    const earlierGames=imoPlayedFormGames(prevLogs[id],prevScoring);
+    const lastFive=[...earlierGames,...currentGames].sort((a,b)=>a.date-b.date).slice(-5);
+    if(lastFive.length<5)continue; // never label fewer than five as 'last five'
+    const priorAvg=currentGames.reduce((sum,x)=>sum+x.fpts,0)/currentGames.length;
+    const recentAvg=lastFive.reduce((sum,x)=>sum+x.fpts,0)/lastFive.length;
+    rows.push({id,name:playerName(id),priorAvg,recentAvg,change:recentAvg-priorAvg,
+      sourceSeason:current,games:currentGames.length,rollingGames:lastFive.length});
   }
-  return fallbackSeasonFormRows()
+  return rows;
+}
+let imoFormHistoryFetch=null;
+const imoFormHistoryAttempted=new Set();
+async function ensureLastFiveCarryoverLogs(){
+  if(imoFormHistoryFetch)return imoFormHistoryFetch;
+  const current=currentSeasonKey(),previous=previousSeasonKey(),curLogs=state.gameLogs?.[current]||{};
+  const prior=state.gameLogs?.[previous]||(state.gameLogs[previous]={});
+  const scoring=bundleForSeason(previous)?.league?.scoring_settings||state.modelBundle?.league?.scoring_settings||{};
+  const ids=Object.entries(curLogs).filter(([id,rows])=>imoPlayedFormGames(rows,scoring).length>0 && imoPlayedFormGames(rows,scoring).length<5 && !safeArray(prior[id]).length && !imoFormHistoryAttempted.has(`${previous}:${id}`)).map(([id])=>id);
+  if(!ids.length)return;
+  ids.forEach(id=>imoFormHistoryAttempted.add(`${previous}:${id}`));
+  imoFormHistoryFetch=limitedMap(ids,5,async id=>{
+    try{const result=await loadPlayerGameLogAverage(id,previous,scoring);return result?.rows?{id,rows:result.rows}:null}catch{return null}
+  }).then(results=>{results.filter(Boolean).forEach(({id,rows})=>prior[id]=rows);renderPlayerForm();}).finally(()=>{imoFormHistoryFetch=null});
+  return imoFormHistoryFetch;
 }
 function recentPlayerForm(){const rows=allGameLogFormRows();return{poor:rows.filter(x=>x.priorAvg>=20&&x.recentAvg>0&&x.change<0).sort((a,b)=>a.change-b.change).slice(0,5),good:rows.filter(x=>x.priorAvg>=15&&x.recentAvg>0&&x.change>0).sort((a,b)=>b.change-a.change).slice(0,5)}}
 function renderFormList(targetId,rows,positive){const target=$(targetId);target.classList.remove("loading");target.innerHTML=rows.length?rows.map((x,i)=>`<div class="rank-item form-player-row ${positive?'good-form-row':'poor-form-row'}"><b>${i+1}</b><div>${playerLink(x.id,x.name,"form-player-link")}<div class="meta">${x.priorAvg.toFixed(1)} season avg → ${x.recentAvg.toFixed(1)} last 5 games</div></div><span class="form-change ${positive?'positive':'negative'}">${x.change>0?'+':''}${x.change.toFixed(1)}</span></div>`).join(""):`<div class="block-empty">Individual regular-season game logs are still loading.</div>`}
-function renderPlayerForm(){const form=recentPlayerForm();renderFormList("poorForm",form.poor,false);renderFormList("goodForm",form.good,true)}
+function renderPlayerForm(){const form=recentPlayerForm();renderFormList("poorForm",form.poor,false);renderFormList("goodForm",form.good,true);if(Object.keys(state.gameLogs?.[currentSeasonKey()]||{}).length)void ensureLastFiveCarryoverLogs()}
 function managerTradeCounts(trades){const c={};trades.forEach(t=>mids(t).forEach(id=>c[id]=(c[id]||0)+1));return c}
 function topEntry(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1])[0]}
 function teamRecordRows(bundle){
