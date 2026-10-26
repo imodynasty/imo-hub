@@ -1,4 +1,4 @@
-/* IMO DYNASTY V4.0.49 — Verified Weekly Team Score Records */
+/* IMO DYNASTY V4.0.50 — Verified Individual Player Records */
 const CONFIG={currentLeagueId:"1341763186407276544",leagueIds:["1341763186407276544","1212553673821929472","1138349648558624768"],api:"https://api.sleeper.app/v1",statsApi:"https://api.sleeper.com/stats/nba/player",bulkStatsApi:"https://api.sleeper.com/stats/nba",roundsToCheck:60,bookmakerMargin:1.08,h2hHouseMargin:1.05,oddsBaseline:.25,oddsExponent:2,maxDisplayedOdds:51,voteEndpoint:"",votingOpens:"2027-02-23T00:00:00+08:00",votingCloses:"2027-03-01T00:00:00+08:00",awardsAnnounced:"2027-03-01T12:00:00+08:00"};
 
 // Completed-draft column ownership is the source of truth for converting a
@@ -1523,7 +1523,75 @@ function highestTeamScore(bundles){
   }));
   return best
 }
-function highestPlayerScore(bundles){let best=null;bundles.forEach(b=>b.matchups.forEach(m=>Object.entries(m.players_points||{}).forEach(([id,v])=>{const pts=Number(v);if(Number.isFinite(pts)&&pts>0&&(!best||pts>best.pts))best={id,pts,week:m.week,season:b.league.season}})));return best}
+// All-game records are different from selected-game records. A public weekly
+// players_points object does not contain every NBA appearance, so never declare
+// an all-time individual record from that incomplete object alone.
+let individualRecordAuditPromise=null,individualRecordAuditKey='',individualRecordAuditReady=false,individualRecordAuditFailed=false;
+const individualRecordSnapshots={};
+function individualRecordCandidates(bundle){
+  const ids=new Set();
+  safeArray(bundle?.rosters).forEach(r=>safeArray(r.players).forEach(id=>ids.add(String(id))));
+  safeArray(bundle?.matchups).forEach(r=>{
+    safeArray(r.starters).forEach(id=>ids.add(String(id)));
+    Object.keys(r.players_points||{}).forEach(id=>ids.add(String(id)));
+  });
+  safeArray(bundle?.trades).forEach(t=>{
+    Object.keys(t.adds||{}).forEach(id=>ids.add(String(id)));
+    Object.keys(t.drops||{}).forEach(id=>ids.add(String(id)));
+  });
+  Object.keys(state.gameLogs?.[String(bundle?.league?.season)]||{}).forEach(id=>ids.add(String(id)));
+  return [...ids].filter(id=>id&&id!=='0'&&id!=='null');
+}
+function highestPlayerScore(bundles){
+  let best=null;
+  bundles.forEach(bundle=>{
+    const season=String(bundle.league.season),scoring=bundle.league.scoring_settings||{};
+    const stored=individualRecordSnapshots[String(bundle.league.league_id)];
+    if(stored?.best&&(!best||stored.best.pts>best.pts))best=stored.best;
+    individualRecordCandidates(bundle).forEach(id=>safeArray(state.gameLogs?.[season]?.[id]).forEach(game=>{
+      if(!gameWasPlayed(game))return;
+      const pts=rivalryLeagueFantasyPoints(game,scoring);
+      if(Number.isFinite(pts)&&pts>0&&(!best||pts>best.pts))best={id,pts,week:Number(game.week)||null,season,gameId:rivalryGameId(game)};
+    }));
+  });
+  return best;
+}
+async function ensureIndividualRecordAudit(){
+  if(individualRecordAuditPromise)return individualRecordAuditPromise;
+  const key=state.bundles.map(b=>String(b.league.league_id)+':'+b.league.season+':'+(String(b.league.league_id)===String(CONFIG.currentLeagueId)?meaningfulWeeks(b).join(','):'')).sort().join('|');
+  if(individualRecordAuditKey!==key){individualRecordAuditKey=key;individualRecordAuditReady=false;individualRecordAuditFailed=false}
+  if(individualRecordAuditReady)return;
+  individualRecordAuditPromise=(async()=>{
+    await ensureOlderHistoryLoaded();
+    const bundles=[...state.bundles],failures=[];
+    for(const bundle of bundles){
+      const season=String(bundle.league.season),scoring=bundle.league.scoring_settings||{};
+      const ids=individualRecordCandidates(bundle);
+      state.gameLogs[season]??={};
+      const missing=ids.filter(id=>!safeArray(state.gameLogs[season][id]).length);
+      await limitedMap(missing,5,async id=>{
+        try{
+          const result=await loadPlayerGameLogAverage(id,season,scoring);
+          // A null result may be a legitimate player with no appearances.
+          // Cache that as empty, but only if the stats request itself succeeded.
+          state.gameLogs[season][id]=result?.rows||[];
+        }catch(error){failures.push(season+':'+id)}
+      });
+      const best=highestPlayerScore([bundle]);
+      if(best)individualRecordSnapshots[String(bundle.league.league_id)]={best};
+      await yieldToBrowser();
+    }
+    individualRecordAuditFailed=failures.length>0;
+    individualRecordAuditReady=!individualRecordAuditFailed;
+    if(failures.length)console.warn('IMO individual player records: incomplete game log verification',failures.length);
+  })().catch(error=>{individualRecordAuditFailed=true;console.warn('IMO individual player record audit failed',error)}).finally(()=>{
+    individualRecordAuditPromise=null;
+    const target=document.getElementById('leagueRecords');
+    if(target&&state.lazyHomepageModules?.get('leagueRecords')?.rendered)safeRender('league records',renderRecords);
+  });
+  return individualRecordAuditPromise;
+}
+
 function longestTradeDroughtSince(startTs=new Date("2025-10-01T00:00:00Z").getTime()){
   const now=Date.now();
   let best=null;
@@ -1554,17 +1622,20 @@ function biggestWinningMargin(bundles){
 }
 function selectedRecordRows(bundle){
   const base=(archivedMatchupRowsForBundle(bundle)||safeArray(bundle?.matchups)).filter(row=>row.matchup_id!=null);
-  // The public Sleeper matchup endpoint omits starters_games for the live season.
-  // Head-to-Head obtains these exact selections from our authenticated Worker.
-  // Include that ledger for league records as well, not only the history archive.
   if(String(bundle?.league?.league_id)!==String(CONFIG.currentLeagueId))return base;
-  const week=resolveHeadToHeadWeek(bundle);
-  const ledger=h2hSelectionLedger(bundle,week);
-  if(!ledger?.rows?.length)return base;
-  const currentRows=ledger.rows.map(row=>({...row,week}));
-  const selectedRosterIds=new Set(currentRows.map(row=>String(row.roster_id)));
-  return [...base.filter(row=>Number(row.week)!==Number(week)||!selectedRosterIds.has(String(row.roster_id))),...currentRows];
+  // Record books must scan EVERY week, not just the week shown in Head-to-Head.
+  // Keep the authenticated selection ledger for previous weeks after the live
+  // matchup page moves to a new week.
+  const weeks=[...new Set([...base.map(row=>Number(row.week)),...completedRankingWeeks(bundle),resolveHeadToHeadWeek(bundle)])]
+    .filter(w=>Number.isInteger(w)&&w>0&&w<=30);
+  const merged=base.filter(row=>!h2hSelectionLedger(bundle,Number(row.week))?.rows?.some(x=>String(x.roster_id)===String(row.roster_id)));
+  for(const week of weeks){
+    const ledger=h2hSelectionLedger(bundle,week);
+    if(ledger?.rows?.length)merged.push(...ledger.rows.map(row=>({...row,week})));
+  }
+  return merged;
 }
+
 function selectedPlayerRecord(bundles){
   let best=null,pending=0;
   bundles.forEach(bundle=>{
@@ -1580,6 +1651,7 @@ function selectedPlayerRecord(bundles){
       if(!best||pts>best.pts)best={id,pts,owner:String(bundle.ownerByRoster?.[row.roster_id]||''),week:row.week,season,gameId:target};
     }));
   });
+  if(bundles.some(bundle=>String(bundle?.league?.league_id)===String(CONFIG.currentLeagueId)&&completedRankingWeeks(bundle).some(w=>!h2hSelectionLedger(bundle,w)?.rows?.length)))pending++;
   return {best,pending}
 }
 function ensureSelectedRecordAudit(){
@@ -1589,11 +1661,27 @@ function ensureSelectedRecordAudit(){
   state.selectedRecordAuditKey=key;
   state.selectedRecordAuditPromise=(async()=>{
     await ensureOlderHistoryLoaded();
-    // Fetch the same authenticated selection feed as Head-to-Head; no tokens
-    // or manual imports are involved. This allows Records to work even if a
-    // visitor has never opened Head-to-Head on this device.
-    if(current&&String(window.IMO_SELECTIONS_FEED_URL||'').trim()){
-      await h2hSyncSharedSelections(current,week);
+    // Fetch ALL historical weeks from the same authenticated Worker used for
+    // Head-to-Head. This fixes the missing Week 1 selected-player record once
+    // the active Sleeper week advances to Week 2.
+    const base=String(window.IMO_SELECTIONS_FEED_URL||'').trim().replace(/\/$/,'');
+    if(current&&base){
+      const weeks=[...new Set([...meaningfulWeeks(current),...completedRankingWeeks(current),week])]
+        .filter(w=>Number.isInteger(w)&&w>0&&w<=30);
+      await limitedMap(weeks,3,async w=>{
+        if(h2hSelectionLedger(current,w)?.rows?.length)return;
+        try{
+          const url=`${base}/selections?league_id=${encodeURIComponent(CONFIG.currentLeagueId)}&week=${w}`;
+          const response=await fetch(url,{cache:'no-store'});
+          if(!response.ok)return;
+          const payload=await response.json();
+          if(String(payload.league_id)!==String(CONFIG.currentLeagueId)||Number(payload.week)!==w)return;
+          const ledger=h2hValidateSelectionImport(payload,current,w);
+          if(ledger.rows.length!==safeArray(current.rosters).length)return;
+          ledger.syncedAt=payload.synced_at||new Date().toISOString();ledger.source='shared-worker';
+          localStorage.setItem(h2hLedgerKey(current,w),JSON.stringify(ledger));
+        }catch(error){console.warn('IMO record selection history unavailable',w,error)}
+      });
     }
     const jobs=[];
     state.bundles.forEach(bundle=>{
@@ -1613,7 +1701,8 @@ function ensureSelectedRecordAudit(){
     safeRender('league records',renderRecords);
   });
 }
-function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const currentTeamScoresReady=currentSeasonTeamRecordsComplete(current),teamEver=currentTeamScoresReady?highestTeamScore(state.bundles):null,teamSeason=currentTeamScoresReady?highestTeamScore([current]):null,playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const margin=biggestWinningMargin(state.bundles),selectedEver=selectedPlayerRecord(state.bundles),selectedSeason=selectedPlayerRecord([current]);const selectedCard=(label,result)=>[label,result.best?playerName(result.best.id):'—',result.best?`${result.best.pts.toFixed(2)} pts · ${managerName(result.best.owner)} · Week ${result.best.week}, ${result.best.season}`:result.pending?(state.selectedRecordAuditPromise?'Verifying selected game scores…':'Selected game data unavailable'):'No selected-game scores yet','record-gold'];const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['BIGGEST WINNING MARGIN',margin?managerName(margin.owner):'—',margin?`+${margin.margin.toFixed(2)} pts vs ${managerName(margin.opponent)} · ${margin.winnerScore.toFixed(2)}–${margin.loserScore.toFixed(2)} · Week ${margin.week}, ${margin.season}`:'No completed results','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(2)} pts · Week ${teamEver.week}, ${teamEver.season}`:currentTeamScoresReady?'No data':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(2)} pts · Week ${teamSeason.week}`:currentTeamScoresReady?'Season not started':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST PLAYER SCORE EVER',playerEver?playerName(playerEver.id):'—',playerEver?`${playerEver.pts.toFixed(2)} pts · Week ${playerEver.week}, ${playerEver.season}`:'No data','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE EVER',selectedEver),['HIGHEST PLAYER SCORE THIS SEASON',playerSeason?playerName(playerSeason.id):'—',playerSeason?`${playerSeason.pts.toFixed(2)} pts · Week ${playerSeason.week}`:'Season not started','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE THIS SEASON',selectedSeason)];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("");const lazy=state.lazyHomepageModules.get('leagueRecords');if(lazy?.rendered){ensureSelectedRecordAudit();void ensureVerifiedWeeklyTeamRecords()}}
+
+function renderRecords(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId)||state.modelBundle,allCounts=managerTradeCounts(state.trades),seasonCounts=managerTradeCounts(current.trades),allTop=topEntry(allCounts),seasonTop=topEntry(seasonCounts),drought=longestTradeDroughtSince();const currentTeamScoresReady=currentSeasonTeamRecordsComplete(current),teamEver=currentTeamScoresReady?highestTeamScore(state.bundles):null,teamSeason=currentTeamScoresReady?highestTeamScore([current]):null,playerEver=highestPlayerScore(state.bundles),playerSeason=highestPlayerScore([current]);const droughtRange=drought?`${drought.days} days · ${new Date(drought.from).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})} to ${drought.ended?new Date(drought.to).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'now'}`:'No data';const margin=biggestWinningMargin(state.bundles),selectedEver=selectedPlayerRecord(state.bundles),selectedSeason=selectedPlayerRecord([current]);const selectedCard=(label,result)=>[label,result.best?playerName(result.best.id):'—',result.best?`${result.best.pts.toFixed(2)} pts · ${managerName(result.best.owner)} · Week ${result.best.week}, ${result.best.season}`:result.pending?(state.selectedRecordAuditPromise?'Verifying selected game scores…':'Selected game data unavailable'):'No selected-game scores yet','record-gold'];const cards=[['MOST TRADES (ALL TIME)',allTop?managerName(allTop[0]):'—',allTop?`${allTop[1]} trades`:'No data','record-green'],['MOST TRADES THIS SEASON',seasonTop?managerName(seasonTop[0]):'—',seasonTop?`${seasonTop[1]} trades`:'No trades','record-green'],['LONGEST TRADE DROUGHT',drought?.m.name||'—',droughtRange,'record-grey'],['BIGGEST WINNING MARGIN',margin?managerName(margin.owner):'—',margin?`+${margin.margin.toFixed(2)} pts vs ${managerName(margin.opponent)} · ${margin.winnerScore.toFixed(2)}–${margin.loserScore.toFixed(2)} · Week ${margin.week}, ${margin.season}`:'No completed results','record-orange'],['HIGHEST WEEKLY TEAM SCORE EVER',teamEver?managerName(teamEver.owner):'—',teamEver?`${teamEver.pts.toFixed(2)} pts · Week ${teamEver.week}, ${teamEver.season}`:currentTeamScoresReady?'No data':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST WEEKLY TEAM SCORE THIS SEASON',teamSeason?managerName(teamSeason.owner):'—',teamSeason?`${teamSeason.pts.toFixed(2)} pts · Week ${teamSeason.week}`:currentTeamScoresReady?'Season not started':'Verifying Sleeper weekly scores…','record-blue'],['HIGHEST PLAYER SCORE EVER',individualRecordAuditReady&&playerEver?playerName(playerEver.id):'—',individualRecordAuditReady&&playerEver?`${playerEver.pts.toFixed(2)} pts · ${playerEver.week?'Week '+playerEver.week+', ':''}${playerEver.season}`:individualRecordAuditFailed?'Player game verification incomplete':'Verifying individual game scores…','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE EVER',selectedEver),['HIGHEST PLAYER SCORE THIS SEASON',individualRecordAuditReady&&playerSeason?playerName(playerSeason.id):'—',individualRecordAuditReady&&playerSeason?`${playerSeason.pts.toFixed(2)} pts · ${playerSeason.week?'Week '+playerSeason.week:'Current season'}`:individualRecordAuditFailed?'Player game verification incomplete':'Verifying individual game scores…','record-gold'],selectedCard('HIGHEST SELECTED PLAYER SCORE THIS SEASON',selectedSeason)];$("leagueRecords").classList.remove("loading");$("leagueRecords").innerHTML=cards.map(x=>`<div class="record ${x[3]}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div>`).join("");const lazy=state.lazyHomepageModules.get('leagueRecords');if(lazy?.rendered){ensureSelectedRecordAudit();void ensureIndividualRecordAudit();void ensureVerifiedWeeklyTeamRecords()}}
 
 function safeTradeValue(t){try{const value=Number(tradeValue(t));return Number.isFinite(value)?value:0}catch(error){console.warn("Could not calculate trade value",t?.transaction_id||t?.created,error);return 0}}
 function tradeFallbackHTML(raw,label='Trade details'){

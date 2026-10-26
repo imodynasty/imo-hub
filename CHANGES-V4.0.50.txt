@@ -1,0 +1,2 @@
+V4.0.50 — Individual game records: selected player records load authenticated selection ledgers for all played weeks (not only the current Head-to-Head week); all-game individual player records audit per-game box scores across archived seasons instead of taking the maximum from incomplete matchup players_points. Records remain in verification state until audit completes. Live H2H unchanged.
+Also bumped index.html app.js cache-busting from 4.0.46 to 4.0.50, preventing browsers from continuing to use an older cached app.js.
