@@ -116,7 +116,7 @@ function rankingMatchupRows(bundle,throughWeek=Infinity){
   const completed=new Set(completedRankingWeeks(bundle));
   return matchupRows(bundle,throughWeek).filter(row=>completed.has(Number(row.week)))
 }
-function selectModelBundle(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&completedRankingWeeks(current).length>=2)return current;return state.bundles.filter(b=>completedRankingWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season))[0]||current||state.bundles[0]}
+function selectModelBundle(){const current=state.bundles.find(b=>String(b.league.league_id)===CONFIG.currentLeagueId);if(current&&completedRankingWeeks(current).length>=1)return current;return state.bundles.filter(b=>completedRankingWeeks(b).length).sort((a,b)=>Number(b.league.season)-Number(a.league.season))[0]||current||state.bundles[0]}
 function matchupRows(bundle,throughWeek=Infinity){return safeArray(bundle?.matchups).filter(x=>Number(x?.week)<=throughWeek&&Number.isFinite(Number(x?.points)))}
 function outcomesForBundle(bundle,throughWeek=Infinity){const rows=rankingMatchupRows(bundle,throughWeek),byWeek={};rows.forEach(x=>(byWeek[x.week]??=[]).push(x));const out={};Object.values(byWeek).forEach(weekRows=>{const groups={};weekRows.forEach(x=>{if(x.matchup_id!=null)(groups[x.matchup_id]??=[]).push(x)});Object.values(groups).forEach(g=>{if(g.length<2)return;const scores=g.map(x=>Number(x.points));if(scores.some(x=>!Number.isFinite(x))||scores.every(x=>x===0))return;const max=Math.max(...scores),ties=scores.filter(x=>x===max).length;g.forEach((x,i)=>{const owner=bundle.ownerByRoster[String(x.roster_id)];if(!owner)return;(out[owner]??=[]).push({week:x.week,points:scores[i],result:scores[i]===max?(ties>1?.5:1):0})})})});return out}
 function minMax(value,values,higher=true){const nums=values.filter(Number.isFinite);if(!nums.length)return .5;const min=Math.min(...nums),max=Math.max(...nums);if(max===min)return .5;const n=(value-min)/(max-min);return higher?n:1-n}
@@ -126,9 +126,17 @@ function bundleOwnerKeyForManager(bundle,managerId){
 }
 function standingsTable(bundle,throughWeek=Infinity){
   const outcomes=outcomesForBundle(bundle,throughWeek);
+  const isCurrent=String(bundle?.league?.league_id)===String(CONFIG.currentLeagueId);
+  const completed=completedRankingWeeks(bundle),latestCompleted=completed.at(-1);
+  // Current standings follow Sleeper roster settings after completed weeks.
+  // Earlier snapshots use completed matchup rows to prevent future leakage.
+  const useSleeper=isCurrent&&latestCompleted!=null&&(throughWeek===Infinity||Number(throughWeek)>=latestCompleted)&&state.currentRosters?.length===state.managers.size&&state.currentRosters.every(r=>r.settings&&Number.isFinite(Number(r.settings.wins))&&Number.isFinite(Number(r.settings.fpts)));
+  const rosterByOwner=useSleeper?Object.fromEntries(state.currentRosters.map(r=>[String(r.owner_id),r])):{};
   return [...state.managers.values()].map(m=>{
-    const sourceId=bundleOwnerKeyForManager(bundle,m.id),games=outcomes[sourceId]||outcomes[m.id]||[],wins=games.reduce((s,g)=>s+g.result,0),pts=games.reduce((s,g)=>s+g.points,0);
-    return {...m,sourceId,wins,games:games.length,pts}
+    const sourceId=bundleOwnerKeyForManager(bundle,m.id),games=outcomes[sourceId]||outcomes[m.id]||[],roster=rosterByOwner[String(m.id)];
+    const wins=roster?Number(roster.settings.wins)+(Number(roster.settings.ties)||0)*.5:games.reduce((s,g)=>s+g.result,0);
+    const pts=roster?Number(roster.settings.fpts)+(Number(roster.settings.fpts_decimal)||0)/100:games.reduce((s,g)=>s+g.points,0);
+    return {...m,sourceId,wins,games:roster?Number(roster.settings.wins||0)+Number(roster.settings.losses||0)+Number(roster.settings.ties||0):games.length,pts}
   }).sort((a,b)=>b.wins-a.wins||b.pts-a.pts||a.name.localeCompare(b.name)).map((x,i)=>({...x,standingRank:i+1}))
 }
 // Franchise continuity follows roster ownership across seasons, including renamed teams.

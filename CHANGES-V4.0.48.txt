@@ -1,0 +1,1 @@
+V4.0.48: Fix Week 1 model selection (do not fall back to last season until two weeks complete). Current completed-week ladder uses Sleeper roster wins and points-for. Historic weekly snapshots remain matchup-derived.
